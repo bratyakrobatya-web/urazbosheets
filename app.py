@@ -4,6 +4,7 @@ import anthropic
 import io
 from typing import Dict, Tuple
 import time
+from docx import Document
 
 st.set_page_config(page_title="Генератор заданий", layout="wide")
 
@@ -44,6 +45,52 @@ def parse_prompt_file(content: str) -> Dict[str, str]:
         prompts[current_type] = '\n'.join(current_prompt)
 
     return prompts
+
+
+def read_docx_prompts(file) -> str:
+    """Читает промпты из .docx файла и возвращает как текст."""
+    doc = Document(file)
+    content = []
+
+    # Извлекаем текст из параграфов
+    for paragraph in doc.paragraphs:
+        content.append(paragraph.text)
+
+    # Извлекаем текст из таблиц
+    for table in doc.tables:
+        for row in table.rows:
+            row_text = []
+            for cell in row.cells:
+                row_text.append(cell.text)
+            content.append('\t'.join(row_text))
+
+    return '\n'.join(content)
+
+
+def read_docx_table(file) -> pd.DataFrame:
+    """Читает первую таблицу из .docx файла и возвращает как DataFrame."""
+    doc = Document(file)
+
+    if not doc.tables:
+        raise ValueError("В Word документе не найдено таблиц")
+
+    # Берем первую таблицу
+    table = doc.tables[0]
+
+    # Извлекаем данные
+    data = []
+    for i, row in enumerate(table.rows):
+        row_data = []
+        for cell in row.cells:
+            row_data.append(cell.text)
+        data.append(row_data)
+
+    # Первая строка - заголовки
+    if data:
+        df = pd.DataFrame(data[1:], columns=data[0])
+        return df
+    else:
+        raise ValueError("Таблица в Word документе пуста")
 
 
 def generate_task(client: anthropic.Anthropic,
@@ -112,8 +159,8 @@ def main():
         st.markdown("### 📋 Инструкция")
         st.markdown("""
         1. Введите API ключ
-        2. Загрузите файл Excel с данными
-        3. Загрузите файл с промптами
+        2. Загрузите файл с данными (Excel или Word)
+        3. Загрузите файл с промптами (TXT или Word)
         4. Выберите строки для обработки
         5. Нажмите "Сгенерировать задания"
         """)
@@ -122,29 +169,45 @@ def main():
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("📊 Загрузка Excel файла")
-        excel_file = st.file_uploader(
-            "Загрузите файл megaphops.xlsx или аналогичный",
-            type=['xlsx', 'xls'],
-            help="Файл должен содержать столбцы: Компетенция, Индикатор, Дисциплина, Уровень сложности, Задание, Ключ"
+        st.subheader("📊 Загрузка файла с данными")
+        data_file = st.file_uploader(
+            "Загрузите файл с данными (Excel или Word)",
+            type=['xlsx', 'xls', 'docx'],
+            help="Excel файл или Word документ с таблицей, содержащей столбцы: Компетенция, Индикатор, Дисциплина, Уровень сложности, Задание, Ключ"
         )
 
     with col2:
         st.subheader("📝 Загрузка файла с промптами")
         prompt_file = st.file_uploader(
-            "Загрузите файл promt",
-            type=['txt'],
-            help="Файл с инструкциями для генерации различных типов заданий"
+            "Загрузите файл с промптами (TXT или Word)",
+            type=['txt', 'docx'],
+            help="Текстовый файл или Word документ с инструкциями для генерации различных типов заданий"
         )
 
-    if excel_file and prompt_file:
-        # Читаем файлы
-        df = pd.read_excel(excel_file)
-        prompt_content = prompt_file.read().decode('utf-8')
-        prompts = parse_prompt_file(prompt_content)
+    if data_file and prompt_file:
+        try:
+            # Читаем файл с данными
+            data_file_name = data_file.name.lower()
+            if data_file_name.endswith('.docx'):
+                df = read_docx_table(data_file)
+                st.success(f"✅ Загружено {len(df)} строк из Word файла")
+            else:
+                df = pd.read_excel(data_file)
+                st.success(f"✅ Загружено {len(df)} строк из Excel файла")
 
-        st.success(f"✅ Загружено {len(df)} строк из Excel файла")
-        st.info(f"📚 Найдено {len(prompts)} типов заданий в файле промптов")
+            # Читаем файл с промптами
+            prompt_file_name = prompt_file.name.lower()
+            if prompt_file_name.endswith('.docx'):
+                prompt_content = read_docx_prompts(prompt_file)
+            else:
+                prompt_content = prompt_file.read().decode('utf-8')
+
+            prompts = parse_prompt_file(prompt_content)
+            st.info(f"📚 Найдено {len(prompts)} типов заданий в файле промптов")
+
+        except Exception as e:
+            st.error(f"❌ Ошибка при чтении файлов: {str(e)}")
+            return
 
         # Показываем превью данных
         with st.expander("👀 Просмотр данных (первые 5 строк)"):
