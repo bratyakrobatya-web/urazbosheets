@@ -1185,10 +1185,11 @@ if st.session_state.processed_data:
         st.session_state.uploaded_file = processed_file_copy
         st.session_state.uploaded_file_name = "megaphops_filled.xlsx"
 
-        # Сбрасываем только processed_data и test_results
+        # Сбрасываем состояние для продолжения работы
         st.session_state.processed_data = None
         st.session_state.test_results = None
+        st.session_state.chosen_model = None
+        st.session_state.chosen_program = None
         st.session_state.show_model_selector = False
         st.session_state.continue_generation = True
-        # chosen_model и chosen_program НЕ сбрасываем - сохраняем выбор
         st.rerun()
