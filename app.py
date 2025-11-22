@@ -213,6 +213,7 @@ def count_available_tasks_per_program(wb):
     col_discipline = headers.get('Дисциплина / модуль / практика')
     col_level = headers.get('Уровень сложности')
     col_task = headers.get('Задание')
+    col_answer = headers.get('Ключ (ответ)')
 
     if not col_program:
         return {}
@@ -225,9 +226,11 @@ def count_available_tasks_per_program(wb):
         discipline = ws.cell(row, col_discipline).value
         level = ws.cell(row, col_level).value
         current_task = ws.cell(row, col_task).value
+        current_answer = ws.cell(row, col_answer).value if col_answer else None
 
         # Проверяем что есть промпт для этого уровня сложности
-        if program and discipline and level and not current_task:
+        # И что ячейки "Задание" и "Ключ (ответ)" пусты
+        if program and discipline and level and not current_task and not current_answer:
             prompt_template = prompts.get(level)
             if prompt_template:  # Считаем только если есть промпт
                 program = program.strip()
@@ -251,6 +254,7 @@ def count_total_tasks(wb):
     col_discipline = headers.get('Дисциплина / модуль / практика')
     col_level = headers.get('Уровень сложности')
     col_task = headers.get('Задание')
+    col_answer = headers.get('Ключ (ответ)')
 
     total_count = 0
     prompts = load_prompts()
@@ -259,9 +263,11 @@ def count_total_tasks(wb):
         discipline = ws.cell(row, col_discipline).value
         level = ws.cell(row, col_level).value
         current_task = ws.cell(row, col_task).value
+        current_answer = ws.cell(row, col_answer).value if col_answer else None
 
         # Проверяем что есть промпт для этого уровня сложности
-        if discipline and level and not current_task:
+        # И что ячейки "Задание" и "Ключ (ответ)" пусты
+        if discipline and level and not current_task and not current_answer:
             prompt_template = prompts.get(level)
             if prompt_template:  # Считаем только если есть промпт
                 total_count += 1
@@ -285,6 +291,13 @@ def get_tasks_from_excel(wb, max_rows=None, filter_program=None):
     col_task = headers.get('Задание')
     col_answer = headers.get('Ключ (ответ)')
 
+    # Проверяем, есть ли столбец "Модель", если нет - создаем его
+    col_model = headers.get('Модель')
+    if not col_model and col_answer:
+        # Создаем новый столбец "Модель" после "Ключ (ответ)"
+        col_model = col_answer + 1
+        ws.cell(1, col_model, 'Модель')
+
     tasks = []
     prompts = load_prompts()
 
@@ -297,6 +310,7 @@ def get_tasks_from_excel(wb, max_rows=None, filter_program=None):
             discipline = ws.cell(row, col_discipline).value
             level = ws.cell(row, col_level).value
             current_task = ws.cell(row, col_task).value
+            current_answer = ws.cell(row, col_answer).value if col_answer else None
 
             # Нормализуем строки для сравнения (убираем пробелы по краям)
             program_normalized = program.strip() if program else None
@@ -306,7 +320,8 @@ def get_tasks_from_excel(wb, max_rows=None, filter_program=None):
             if program_normalized != filter_normalized:
                 continue
 
-            if discipline and level and not current_task:
+            # Проверяем что обе ячейки пусты (для поддержки частично обработанных файлов)
+            if discipline and level and not current_task and not current_answer:
                 prompt_template = prompts.get(level)
                 if prompt_template:
                     tasks.append({
@@ -321,16 +336,16 @@ def get_tasks_from_excel(wb, max_rows=None, filter_program=None):
                     if max_rows and len(tasks) >= max_rows:
                         break
     else:
-        # Без фильтра по программе - используем старую логику
-        row_limit = min(max_rows + 2, ws.max_row + 1) if max_rows else ws.max_row + 1
-
-        for row in range(2, row_limit):
+        # Без фильтра по программе - сканируем весь файл
+        for row in range(2, ws.max_row + 1):
             program = ws.cell(row, col_program).value if col_program else None
             discipline = ws.cell(row, col_discipline).value
             level = ws.cell(row, col_level).value
             current_task = ws.cell(row, col_task).value
+            current_answer = ws.cell(row, col_answer).value if col_answer else None
 
-            if discipline and level and not current_task:
+            # Проверяем что обе ячейки пусты (для поддержки частично обработанных файлов)
+            if discipline and level and not current_task and not current_answer:
                 prompt_template = prompts.get(level)
                 if prompt_template:
                     tasks.append({
@@ -341,7 +356,11 @@ def get_tasks_from_excel(wb, max_rows=None, filter_program=None):
                         'prompt': prompt_template
                     })
 
-    return tasks, (col_task, col_answer)
+                    # Ограничиваем количество задач после сбора
+                    if max_rows and len(tasks) >= max_rows:
+                        break
+
+    return tasks, (col_task, col_answer, col_model)
 
 # ============================================================================
 # ФУНКЦИИ ГЕНЕРАЦИИ ДЛЯ РАЗНЫХ МОДЕЛЕЙ
@@ -679,7 +698,7 @@ if uploaded_file:
         with st.spinner("Тестируем 7 AI моделей на первых 2 заданиях..."):
             wb = load_excel(uploaded_file)
             if wb:
-                tasks, cols = get_tasks_from_excel(wb, max_rows=2)
+                tasks, (col_task, col_answer, col_model) = get_tasks_from_excel(wb, max_rows=2)
 
                 if len(tasks) >= 2:
                     results = {
@@ -1001,7 +1020,7 @@ if st.session_state.chosen_model and st.session_state.chosen_program:
         with st.spinner(f"Обработка {batch_size} строк программы '{st.session_state.chosen_program}'..."):
             wb = load_excel(st.session_state.uploaded_file)
             if wb:
-                tasks, (col_task, col_answer) = get_tasks_from_excel(
+                tasks, (col_task, col_answer, col_model) = get_tasks_from_excel(
                     wb,
                     max_rows=batch_size,
                     filter_program=st.session_state.chosen_program
@@ -1055,6 +1074,9 @@ if st.session_state.chosen_model and st.session_state.chosen_program:
                                 if task_text and answer_text:
                                     ws.cell(task['row'], col_task, task_text)
                                     ws.cell(task['row'], col_answer, answer_text)
+                                    # Записываем название модели
+                                    if col_model:
+                                        ws.cell(task['row'], col_model, model_names[st.session_state.chosen_model])
                                     results.append({
                                         "Строка": task['row'],
                                         "Дисциплина": task['discipline'],
