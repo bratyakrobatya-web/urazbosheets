@@ -3,8 +3,6 @@ import pandas as pd
 import openpyxl
 from docx import Document
 import replicate
-import anthropic
-from openai import OpenAI
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
@@ -28,12 +26,10 @@ if 'processed_data' not in st.session_state:
     st.session_state.processed_data = None
 
 # Получаем API ключи из secrets
-API_KEY = st.secrets.get("API_KEY", "")
+REPLICATE_API_TOKEN = st.secrets.get("REPLICATE_API_TOKEN", "")
 
-# Инициализация клиентов
-os.environ["REPLICATE_API_TOKEN"] = API_KEY
-anthropic_client = anthropic.Anthropic(api_key=API_KEY)
-openai_client = OpenAI(api_key=API_KEY)
+# Инициализация клиента Replicate
+os.environ["REPLICATE_API_TOKEN"] = REPLICATE_API_TOKEN
 
 # ============================================================================
 # ФУНКЦИИ ДЛЯ РАБОТЫ С ФАЙЛАМИ
@@ -142,7 +138,7 @@ def generate_deepseek(discipline, level, prompt_template):
         return None, None, str(e)
 
 def generate_claude(discipline, level, prompt_template):
-    """Генерация через Claude Sonnet 3.5"""
+    """Генерация через Claude Sonnet 3.5 (via Replicate)"""
     full_prompt = f"""{prompt_template}
 
 Дисциплина/модуль/практика: {discipline}
@@ -158,21 +154,25 @@ def generate_claude(discipline, level, prompt_template):
 Важно: отвечай только на русском языке."""
     
     try:
-        response = anthropic_client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=2000,
-            messages=[
-                {"role": "user", "content": full_prompt}
-            ]
+        output = replicate.run(
+            "anthropic/claude-3.5-sonnet",
+            input={
+                "prompt": full_prompt,
+                "max_tokens": 2000,
+                "temperature": 0.7
+            }
         )
         
-        response_text = response.content[0].text
+        response_text = ""
+        for item in output:
+            response_text += item
+        
         return parse_response(response_text)
     except Exception as e:
         return None, None, str(e)
 
 def generate_gpt4o(discipline, level, prompt_template):
-    """Генерация через GPT-4o"""
+    """Генерация через GPT-4o (via Replicate)"""
     full_prompt = f"""{prompt_template}
 
 Дисциплина/модуль/практика: {discipline}
@@ -188,17 +188,19 @@ def generate_gpt4o(discipline, level, prompt_template):
 Важно: отвечай только на русском языке."""
     
     try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "Ты профессиональный создатель образовательных заданий."},
-                {"role": "user", "content": full_prompt}
-            ],
-            max_tokens=2000,
-            temperature=0.7
+        output = replicate.run(
+            "openai/gpt-4o",
+            input={
+                "prompt": full_prompt,
+                "max_tokens": 2000,
+                "temperature": 0.7
+            }
         )
         
-        response_text = response.choices[0].message.content
+        response_text = ""
+        for item in output:
+            response_text += item
+        
         return parse_response(response_text)
     except Exception as e:
         return None, None, str(e)
