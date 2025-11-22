@@ -28,8 +28,9 @@ st.markdown("""
             font-family: 'Golos Text', sans-serif !important;
         }
 
-        /* Полностью скрываем текст keyboard_double_arrow_right */
-        [data-testid="collapsedControl"] {
+        /* Скрываем текст keyboard_double_arrow_right для разных версий Streamlit */
+        [data-testid="collapsedControl"],
+        [data-testid="stSidebarCollapsedControl"] {
             width: 40px !important;
             height: 40px !important;
             position: relative !important;
@@ -38,22 +39,26 @@ st.markdown("""
             justify-content: center !important;
         }
 
-        /* Скрываем все содержимое внутри */
-        [data-testid="collapsedControl"] * {
-            display: none !important;
+        /* Скрываем текст внутри через font-size */
+        [data-testid="collapsedControl"] span,
+        [data-testid="stSidebarCollapsedControl"] span {
+            font-size: 0 !important;
+            display: block !important;
         }
 
         /* Показываем нашу иконку меню */
-        [data-testid="collapsedControl"]::before {
+        [data-testid="collapsedControl"] span::before,
+        [data-testid="stSidebarCollapsedControl"] span::before {
             content: "☰" !important;
-            display: block !important;
             font-size: 24px !important;
             color: rgba(49, 51, 63, 0.6) !important;
             font-family: Arial, sans-serif !important;
             line-height: 1 !important;
+            display: block !important;
         }
 
-        [data-testid="collapsedControl"]:hover::before {
+        [data-testid="collapsedControl"]:hover span::before,
+        [data-testid="stSidebarCollapsedControl"]:hover span::before {
             color: rgba(49, 51, 63, 1) !important;
         }
     </style>
