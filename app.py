@@ -71,6 +71,8 @@ if 'chosen_program' not in st.session_state:
     st.session_state.chosen_program = None
 if 'processed_data' not in st.session_state:
     st.session_state.processed_data = None
+if 'show_model_selector' not in st.session_state:
+    st.session_state.show_model_selector = False
 
 # Получаем API ключи из secrets
 REPLICATE_API_TOKEN = st.secrets.get("REPLICATE_API_TOKEN", "")
@@ -660,9 +662,20 @@ uploaded_file = st.file_uploader("Выберите megaphops.xlsx", type=['xlsx'
 if uploaded_file:
     st.session_state.uploaded_file = uploaded_file
     st.success(f"✅ Файл загружен: {uploaded_file.name}")
-    
-    # Кнопка для показа вариантов
-    if st.button("🔍 Показать варианты заданий", type="primary"):
+
+    # Две кнопки: показать варианты и выбрать модель сразу
+    col1, col2 = st.columns(2)
+
+    with col1:
+        show_variants = st.button("🔍 Показать варианты заданий", type="primary", use_container_width=True)
+
+    with col2:
+        select_model = st.button("⚡ Выбрать модель сразу", type="secondary", use_container_width=True)
+
+    if select_model:
+        st.session_state.show_model_selector = True
+
+    if show_variants:
         with st.spinner("Тестируем 7 AI моделей на первых 2 заданиях..."):
             wb = load_excel(uploaded_file)
             if wb:
@@ -755,6 +768,78 @@ if uploaded_file:
                 else:
                     st.error("В файле недостаточно пустых строк для тестирования")
 
+# Прямой выбор модели без тестирования
+if st.session_state.show_model_selector and not st.session_state.chosen_model:
+    st.header("2️⃣ Выберите модель")
+    st.markdown("Выберите AI модель для генерации заданий:")
+
+    # Получаем курс доллара для расчетов
+    usd_rub_rate = get_usd_rub_rate()
+
+    # Получаем общее количество задач в файле
+    wb = load_excel(st.session_state.uploaded_file)
+    total_tasks_count = count_total_tasks(wb) if wb else 0
+
+    models = {
+        "DeepSeek-V3": {
+            "icon": "🚀",
+            "description": "Лучшая цена/качество. $0.14 за 1M токенов",
+            "key": "deepseek"
+        },
+        "Claude Sonnet 3.5": {
+            "icon": "🧠",
+            "description": "Топовое качество. $3 за 1M токenов",
+            "key": "claude"
+        },
+        "GPT-4o": {
+            "icon": "⚡",
+            "description": "Быстрый и качественный. $2.50 за 1M токенов",
+            "key": "gpt4o"
+        },
+        "Llama 3.1 405B": {
+            "icon": "🦙",
+            "description": "405B параметров. Мощная модель",
+            "key": "llama"
+        },
+        "Gemini 2.5 Flash": {
+            "icon": "💎",
+            "description": "Google быстрый. $0.30 (ввод) + $2.50 (вывод) за 1M",
+            "key": "gemini_flash"
+        },
+        "GPT-5.1 (high)": {
+            "icon": "🧪",
+            "description": "Топ reasoning. $1.25 (ввод) + $10 (вывод) за 1M",
+            "key": "gpt51"
+        },
+        "Kimi K2": {
+            "icon": "🌙",
+            "description": "Отлично с русским. $0.15 (ввод) + $2.50 (вывод) за 1M",
+            "key": "kimi"
+        }
+    }
+
+    # Создаем кнопки для выбора модели
+    for model_name, model_info in models.items():
+        # Рассчитываем стоимость для всей таблицы
+        if total_tasks_count > 0:
+            full_cost_usd, full_cost_rub = calculate_cost(total_tasks_count, model_info['key'], usd_rub_rate)
+            full_time = calculate_time(total_tasks_count, model_info['key'])
+
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.markdown(
+                    f"**{model_info['icon']} {model_name}** — {model_info['description']}\n\n"
+                    f"💰 {full_cost_rub:.2f} ₽ (${full_cost_usd:.2f}) • ⏱️ {full_time} ({total_tasks_count} задач)"
+                )
+            with col2:
+                if st.button("✅ Выбрать", key=f"direct_choose_{model_info['key']}"):
+                    st.session_state.chosen_model = model_info['key']
+                    st.session_state.show_model_selector = False
+                    st.success(f"Выбрана модель: {model_name}")
+                    st.rerun()
+
+        st.markdown("---")
+
 # Шаг 2: Показ результатов тестирования
 if st.session_state.test_results:
     st.header("2️⃣ Выберите модель")
@@ -790,17 +875,17 @@ if st.session_state.test_results:
         },
         "Gemini 2.5 Flash": {
             "icon": "💎",
-            "description": "Google быстрый. $0.30 input + $2.50 output за 1M",
+            "description": "Google быстрый. $0.30 (ввод) + $2.50 (вывод) за 1M",
             "key": "gemini_flash"
         },
         "GPT-5.1 (high)": {
             "icon": "🧪",
-            "description": "Топ reasoning. $1.25 input + $10 output за 1M",
+            "description": "Топ reasoning. $1.25 (ввод) + $10 (вывод) за 1M",
             "key": "gpt51"
         },
         "Kimi K2": {
             "icon": "🌙",
-            "description": "Отлично с русским. $0.15 input + $2.50 output за 1M",
+            "description": "Отлично с русским. $0.15 (ввод) + $2.50 (вывод) за 1M",
             "key": "kimi"
         }
     }
