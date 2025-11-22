@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import openpyxl
-from docx import Document
+import csv
 import replicate
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -67,24 +67,21 @@ def calculate_cost(num_tasks, model_key, usd_rub_rate):
 # ============================================================================
 
 def load_prompts():
-    """Загружает промпты из promts.docx"""
+    """Загружает промпты из promts.csv"""
     try:
-        doc = Document("promts.docx")
         prompts = {}
-        
-        for table in doc.tables:
-            for row in table.rows:
-                cells = row.cells
-                if len(cells) >= 2:
-                    level = cells[0].text.strip()
-                    prompt_text = cells[1].text.strip()
-                    
-                    if level and prompt_text:
-                        prompts[level] = prompt_text
-        
+        with open("promts.csv", 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                level = row['Уровень сложности'].strip()
+                prompt_text = row['Промпт'].strip()
+
+                if level and prompt_text:
+                    prompts[level] = prompt_text
+
         return prompts
     except Exception as e:
-        st.error(f"Ошибка чтения promts.docx: {e}")
+        st.error(f"Ошибка чтения promts.csv: {e}")
         return {}
 
 def load_excel(file):
