@@ -28,24 +28,29 @@ st.markdown("""
             font-family: 'Golos Text', sans-serif !important;
         }
 
-        /* Заменяем текст keyboard_double_arrow_right на иконку */
+        /* Полностью скрываем текст keyboard_double_arrow_right */
         [data-testid="collapsedControl"] {
-            color: transparent !important;
             width: 40px !important;
             height: 40px !important;
             position: relative !important;
-            overflow: hidden !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
         }
 
+        /* Скрываем все содержимое внутри */
+        [data-testid="collapsedControl"] * {
+            display: none !important;
+        }
+
+        /* Показываем нашу иконку меню */
         [data-testid="collapsedControl"]::before {
             content: "☰" !important;
-            position: absolute !important;
-            top: 50% !important;
-            left: 50% !important;
-            transform: translate(-50%, -50%) !important;
+            display: block !important;
             font-size: 24px !important;
             color: rgba(49, 51, 63, 0.6) !important;
             font-family: Arial, sans-serif !important;
+            line-height: 1 !important;
         }
 
         [data-testid="collapsedControl"]:hover::before {
