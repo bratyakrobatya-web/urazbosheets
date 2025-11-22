@@ -84,7 +84,10 @@ def get_tasks_from_excel(wb, max_rows=None):
     tasks = []
     prompts = load_prompts()
     
-    row_limit = min(max_rows + 1, ws.max_row + 1) if max_rows else ws.max_row + 1
+    # Row 1 contains headers, data starts from row 2
+    # To get max_rows data rows, we need to go from row 2 to row (2 + max_rows - 1) inclusive
+    # range(2, 2 + max_rows) = range(2, max_rows + 2)
+    row_limit = min(max_rows + 2, ws.max_row + 1) if max_rows else ws.max_row + 1
     
     for row in range(2, row_limit):
         discipline = ws.cell(row, col_discipline).value
