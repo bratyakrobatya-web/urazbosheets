@@ -36,9 +36,9 @@ os.environ["REPLICATE_API_TOKEN"] = REPLICATE_API_TOKEN
 # ============================================================================
 
 def load_prompts():
-    """Загружает промпты из promt.docx"""
+    """Загружает промпты из promts.docx"""
     try:
-        doc = Document("promt.docx")
+        doc = Document("promts.docx")
         prompts = {}
         
         for table in doc.tables:
@@ -53,7 +53,7 @@ def load_prompts():
         
         return prompts
     except Exception as e:
-        st.error(f"Ошибка чтения promt.docx: {e}")
+        st.error(f"Ошибка чтения promts.docx: {e}")
         return {}
 
 def load_excel(file):
