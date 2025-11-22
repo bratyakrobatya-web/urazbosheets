@@ -1,307 +1,422 @@
 import streamlit as st
 import pandas as pd
-import io
-from typing import Dict, Tuple
-import random
+import openpyxl
+from docx import Document
+import replicate
+import anthropic
+from openai import OpenAI
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+from io import BytesIO
 
-st.set_page_config(page_title="Генератор заданий", layout="wide")
+# Настройка страницы
+st.set_page_config(
+    page_title="Генератор учебных заданий",
+    page_icon="🎓",
+    layout="wide"
+)
 
-# Путь к файлу promt в репозитории
-PROMT_FILE_PATH = os.path.join(os.path.dirname(__file__), 'promt')
+# Инициализация session_state
+if 'uploaded_file' not in st.session_state:
+    st.session_state.uploaded_file = None
+if 'test_results' not in st.session_state:
+    st.session_state.test_results = None
+if 'chosen_model' not in st.session_state:
+    st.session_state.chosen_model = None
+if 'processed_data' not in st.session_state:
+    st.session_state.processed_data = None
 
-def parse_prompt_file(content: str) -> Dict[str, str]:
-    """Парсит файл promt и извлекает инструкции для каждого типа задания."""
-    prompts = {}
-    lines = content.split('\n')
+# Получаем API ключи из secrets
+API_KEY = st.secrets.get("API_KEY", "")
 
-    current_type = None
-    current_prompt = []
+# Инициализация клиентов
+os.environ["REPLICATE_API_TOKEN"] = API_KEY
+anthropic_client = anthropic.Anthropic(api_key=API_KEY)
+openai_client = OpenAI(api_key=API_KEY)
 
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip()
+# ============================================================================
+# ФУНКЦИИ ДЛЯ РАБОТЫ С ФАЙЛАМИ
+# ============================================================================
 
-        # Ищем строки с типами заданий (заканчиваются на табуляцию и начинаются с "Задания")
-        if '\t' in lines[i] and line.startswith('Задания'):
-            # Сохраняем предыдущий промпт
-            if current_type and current_prompt:
-                prompts[current_type] = '\n'.join(current_prompt)
-
-            # Разделяем по табуляции
-            parts = lines[i].split('\t')
-            if len(parts) >= 2:
-                current_type = parts[0].strip()
-                current_prompt = [parts[1].strip()]
-            i += 1
-        elif current_type:
-            # Добавляем строки к текущему промпту
-            if line and not line.startswith('→'):
-                current_prompt.append(line)
-            i += 1
-        else:
-            i += 1
-
-    # Сохраняем последний промпт
-    if current_type and current_prompt:
-        prompts[current_type] = '\n'.join(current_prompt)
-
-    return prompts
-
-
-def generate_matching_task(competence: str, indicator: str, discipline: str) -> Tuple[str, str]:
-    """Генерирует задание на установление соответствия."""
-
-    task = f"""Соотнесите понятия, концепции или процессы в рамках дисциплины "{discipline}" для проверки индикатора: {indicator}
-
-Элементы для сопоставления:
-1. Понятие 1
-2. Понятие 2
-3. Понятие 3
-4. Понятие 4
-
-Определения и характеристики:
-А. Характеристика или определение для понятия 1
-Б. Характеристика или определение для понятия 2
-В. Характеристика или определение для понятия 3
-Г. Характеристика или определение для понятия 4"""
-
-    key = "1А, 2Б, 3В, 4Г"
-    return task, key
-
-
-def generate_sequence_task(competence: str, indicator: str, discipline: str) -> Tuple[str, str]:
-    """Генерирует задание на установление последовательности."""
-
-    task = f"""Установите правильную последовательность этапов, действий или процессов в рамках дисциплины "{discipline}" для проверки индикатора: {indicator}
-
-1. Этап анализа и подготовки
-2. Этап планирования
-3. Этап реализации
-4. Этап контроля и оценки результатов"""
-
-    key = "1, 2, 3, 4"
-    return task, key
-
-
-def generate_single_choice_task(competence: str, indicator: str, discipline: str) -> Tuple[str, str]:
-    """Генерирует задание с выбором одного ответа и объяснением."""
-
-    task = f"""Выберите наиболее корректное утверждение, отражающее суть индикатора "{indicator}" в контексте дисциплины "{discipline}", и объясните свой выбор:
-
-1. Вариант, частично раскрывающий суть индикатора
-2. Некорректный вариант, не соответствующий индикатору
-3. Вариант, полностью соответствующий индикатору и специфике дисциплины
-4. Вариант с частичной корректностью"""
-
-    key = "3. Объяснение: Данный вариант полностью соответствует индикатору, так как учитывает специфику дисциплины и отражает ключевые аспекты формируемой компетенции."
-    return task, key
-
-
-def generate_multiple_choice_task(competence: str, indicator: str, discipline: str) -> Tuple[str, str]:
-    """Генерирует задание с выбором нескольких ответов и объяснением."""
-
-    task = f"""Выберите все утверждения, которые корректно отражают индикатор "{indicator}" в контексте дисциплины "{discipline}", и поясните ваш выбор:
-
-1. Утверждение, отражающее один из аспектов индикатора
-2. Некорректное утверждение, противоречащее индикатору
-3. Утверждение, отражающее другой аспект индикатора
-4. Утверждение с неполной или искаженной информацией"""
-
-    key = "1, 3. Объяснение: Варианты 1 и 3 корректно отражают различные аспекты индикатора в рамках дисциплины. Вариант 1 описывает [первый аспект], а вариант 3 раскрывает [второй аспект], что в совокупности демонстрирует понимание индикатора."
-    return task, key
-
-
-def generate_open_task(competence: str, indicator: str, discipline: str) -> Tuple[str, str]:
-    """Генерирует задание открытого типа."""
-
-    task = f"""Опишите, как индикатор "{indicator}" проявляется в контексте дисциплины "{discipline}".
-
-В своем ответе:
-- Раскройте сущность индикатора применительно к данной дисциплине
-- Приведите конкретные примеры ситуаций или задач, где этот индикатор проявляется
-- Объясните, какие знания, умения или навыки необходимы для достижения данного индикатора"""
-
-    key = f"""Возможная аргументация:
-
-В рамках дисциплины "{discipline}" индикатор проявляется следующим образом:
-
-1. Теоретический аспект: студент должен понимать основные концепции, принципы и закономерности, связанные с содержанием дисциплины.
-
-2. Практический аспект: применение теоретических знаний для решения практических задач, характерных для данной дисциплины.
-
-3. Примеры проявления индикатора:
-   - Анализ профессиональных ситуаций
-   - Разработка решений на основе изученного материала
-   - Обоснование выбора методов и подходов
-
-4. Необходимые компетенции: знание теоретической базы дисциплины, умение применять знания в практических ситуациях, навыки анализа и критического мышления."""
-    return task, key
-
-
-def generate_task(prompt_template: str,
-                  competence: str,
-                  indicator: str,
-                  discipline: str,
-                  task_type: str) -> Tuple[str, str]:
-    """Генерирует задание и ключ на основе шаблонов."""
-
+def load_prompts():
+    """Загружает промпты из promt.docx"""
     try:
-        # Определяем тип задания и вызываем соответствующий генератор
-        if "соответстви" in task_type.lower():
-            return generate_matching_task(competence, indicator, discipline)
-        elif "последовательност" in task_type.lower():
-            return generate_sequence_task(competence, indicator, discipline)
-        elif "одного правильного" in task_type.lower():
-            return generate_single_choice_task(competence, indicator, discipline)
-        elif "нескольких" in task_type.lower():
-            return generate_multiple_choice_task(competence, indicator, discipline)
-        elif "открытого типа" in task_type.lower():
-            return generate_open_task(competence, indicator, discipline)
-        else:
-            # Если тип не распознан, используем открытое задание
-            return generate_open_task(competence, indicator, discipline)
-
+        doc = Document("promt.docx")
+        prompts = {}
+        
+        for table in doc.tables:
+            for row in table.rows:
+                cells = row.cells
+                if len(cells) >= 2:
+                    level = cells[0].text.strip()
+                    prompt_text = cells[1].text.strip()
+                    
+                    if level and prompt_text:
+                        prompts[level] = prompt_text
+        
+        return prompts
     except Exception as e:
-        return f"Ошибка: {str(e)}", f"Ошибка: {str(e)}"
+        st.error(f"Ошибка чтения promt.docx: {e}")
+        return {}
 
+def load_excel(file):
+    """Загружает Excel файл и возвращает workbook"""
+    try:
+        wb = openpyxl.load_workbook(file)
+        return wb
+    except Exception as e:
+        st.error(f"Ошибка загрузки Excel: {e}")
+        return None
 
-def main():
-    st.title("🎓 Генератор учебных заданий")
-    st.markdown("Автоматическая генерация заданий на основе шаблонов")
-    st.markdown("---")
+def get_tasks_from_excel(wb, max_rows=None):
+    """Извлекает задачи из Excel"""
+    ws = wb.active
+    
+    # Находим заголовки
+    headers = {}
+    for col in range(1, ws.max_column + 1):
+        cell_value = ws.cell(1, col).value
+        if cell_value:
+            headers[cell_value.strip()] = col
+    
+    col_discipline = headers.get('Дисциплина / модуль / практика')
+    col_level = headers.get('Уровень сложности')
+    col_task = headers.get('Задание')
+    col_answer = headers.get('Ключ (ответ)')
+    
+    tasks = []
+    prompts = load_prompts()
+    
+    row_limit = min(max_rows + 1, ws.max_row + 1) if max_rows else ws.max_row + 1
+    
+    for row in range(2, row_limit):
+        discipline = ws.cell(row, col_discipline).value
+        level = ws.cell(row, col_level).value
+        current_task = ws.cell(row, col_task).value
+        
+        if discipline and level and not current_task:
+            prompt_template = prompts.get(level)
+            if prompt_template:
+                tasks.append({
+                    'row': row,
+                    'discipline': discipline,
+                    'level': level,
+                    'prompt': prompt_template
+                })
+    
+    return tasks, (col_task, col_answer)
 
-    # Боковая панель с настройками
-    with st.sidebar:
-        st.header("📋 Инструкция")
-        st.markdown("""
-        1. Загрузите файл megaphops.xlsx
-        2. Выберите строки для обработки
-        3. Нажмите "Сгенерировать задания"
-        4. Скачайте результат
-        """)
+# ============================================================================
+# ФУНКЦИИ ГЕНЕРАЦИИ ДЛЯ РАЗНЫХ МОДЕЛЕЙ
+# ============================================================================
 
-        st.markdown("---")
-        st.info("Генерация происходит на основе встроенных шаблонов без использования AI API")
+def generate_deepseek(discipline, level, prompt_template):
+    """Генерация через DeepSeek-V3"""
+    full_prompt = f"""{prompt_template}
 
-    # Загружаем файл promt из репозитория
-    prompts = {}
-    if os.path.exists(PROMT_FILE_PATH):
-        try:
-            with open(PROMT_FILE_PATH, 'r', encoding='utf-8') as f:
-                prompt_content = f.read()
-                prompts = parse_prompt_file(prompt_content)
-            st.success(f"✅ Загружено {len(prompts)} типов заданий из файла promt")
-        except Exception as e:
-            st.error(f"Ошибка при загрузке файла promt: {str(e)}")
+Дисциплина/модуль/практика: {discipline}
+
+Сгенерируй задание и ответ к нему в следующем формате:
+
+ЗАДАНИЕ:
+[текст задания]
+
+КЛЮЧ (ОТВЕТ):
+[правильный ответ]
+
+Важно: отвечай только на русском языке."""
+    
+    try:
+        output = replicate.run(
+            "deepseek-ai/deepseek-v3",
+            input={"prompt": full_prompt, "max_tokens": 2000, "temperature": 0.7}
+        )
+        
+        response_text = ""
+        for item in output:
+            response_text += item
+        
+        return parse_response(response_text)
+    except Exception as e:
+        return None, None, str(e)
+
+def generate_claude(discipline, level, prompt_template):
+    """Генерация через Claude Sonnet 3.5"""
+    full_prompt = f"""{prompt_template}
+
+Дисциплина/модуль/практика: {discipline}
+
+Сгенерируй задание и ответ к нему в следующем формате:
+
+ЗАДАНИЕ:
+[текст задания]
+
+КЛЮЧ (ОТВЕТ):
+[правильный ответ]
+
+Важно: отвечай только на русском языке."""
+    
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=2000,
+            messages=[
+                {"role": "user", "content": full_prompt}
+            ]
+        )
+        
+        response_text = response.content[0].text
+        return parse_response(response_text)
+    except Exception as e:
+        return None, None, str(e)
+
+def generate_gpt4o(discipline, level, prompt_template):
+    """Генерация через GPT-4o"""
+    full_prompt = f"""{prompt_template}
+
+Дисциплина/модуль/практика: {discipline}
+
+Сгенерируй задание и ответ к нему в следующем формате:
+
+ЗАДАНИЕ:
+[текст задания]
+
+КЛЮЧ (ОТВЕТ):
+[правильный ответ]
+
+Важно: отвечай только на русском языке."""
+    
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Ты профессиональный создатель образовательных заданий."},
+                {"role": "user", "content": full_prompt}
+            ],
+            max_tokens=2000,
+            temperature=0.7
+        )
+        
+        response_text = response.choices[0].message.content
+        return parse_response(response_text)
+    except Exception as e:
+        return None, None, str(e)
+
+def parse_response(response_text):
+    """Парсит ответ модели"""
+    task = ""
+    answer = ""
+    
+    if "ЗАДАНИЕ:" in response_text and "КЛЮЧ (ОТВЕТ):" in response_text:
+        parts = response_text.split("КЛЮЧ (ОТВЕТ):")
+        task = parts[0].replace("ЗАДАНИЕ:", "").strip()
+        answer = parts[1].strip()
+    elif "ЗАДАНИЕ:" in response_text and "ОТВЕТ:" in response_text:
+        parts = response_text.split("ОТВЕТ:")
+        task = parts[0].replace("ЗАДАНИЕ:", "").strip()
+        answer = parts[1].strip()
     else:
-        st.warning(f"⚠️ Файл promt не найден по пути: {PROMT_FILE_PATH}")
+        lines = response_text.strip().split('\n')
+        mid = len(lines) // 2
+        task = '\n'.join(lines[:mid]).strip()
+        answer = '\n'.join(lines[mid:]).strip()
+    
+    return task, answer, None
 
-    # Основная часть
-    st.subheader("📊 Загрузка файла с данными")
-    excel_file = st.file_uploader(
-        "Загрузите файл megaphops.xlsx",
-        type=['xlsx', 'xls'],
-        help="Файл должен содержать столбцы: A-Компетенция, B-Индикатор, C-Дисциплина, D-Тип задания, E-Задание, F-Ключ"
+# ============================================================================
+# ОСНОВНОЕ ПРИЛОЖЕНИЕ
+# ============================================================================
+
+st.title("🎓 Генератор учебных заданий")
+st.markdown("Автоматическая генерация заданий через AI модели")
+
+# Шаг 1: Загрузка файла
+st.header("1️⃣ Загрузите файл")
+uploaded_file = st.file_uploader("Выберите megaphops.xlsx", type=['xlsx'])
+
+if uploaded_file:
+    st.session_state.uploaded_file = uploaded_file
+    st.success(f"✅ Файл загружен: {uploaded_file.name}")
+    
+    # Кнопка для показа вариантов
+    if st.button("🔍 Показать варианты заданий", type="primary"):
+        with st.spinner("Тестируем 3 AI модели на первых 2 заданиях..."):
+            wb = load_excel(uploaded_file)
+            if wb:
+                tasks, cols = get_tasks_from_excel(wb, max_rows=2)
+                
+                if len(tasks) >= 2:
+                    results = {
+                        "DeepSeek-V3": [],
+                        "Claude Sonnet 3.5": [],
+                        "GPT-4o": []
+                    }
+                    
+                    # Генерируем для первых 2 заданий
+                    for task in tasks[:2]:
+                        # DeepSeek
+                        task_text, answer_text, error = generate_deepseek(
+                            task['discipline'], task['level'], task['prompt']
+                        )
+                        results["DeepSeek-V3"].append({
+                            "Дисциплина": task['discipline'],
+                            "Задание": task_text if task_text else f"Ошибка: {error}",
+                            "Ответ": answer_text if answer_text else ""
+                        })
+                        
+                        # Claude
+                        task_text, answer_text, error = generate_claude(
+                            task['discipline'], task['level'], task['prompt']
+                        )
+                        results["Claude Sonnet 3.5"].append({
+                            "Дисциплина": task['discipline'],
+                            "Задание": task_text if task_text else f"Ошибка: {error}",
+                            "Ответ": answer_text if answer_text else ""
+                        })
+                        
+                        # GPT-4o
+                        task_text, answer_text, error = generate_gpt4o(
+                            task['discipline'], task['level'], task['prompt']
+                        )
+                        results["GPT-4o"].append({
+                            "Дисциплина": task['discipline'],
+                            "Задание": task_text if task_text else f"Ошибка: {error}",
+                            "Ответ": answer_text if answer_text else ""
+                        })
+                    
+                    st.session_state.test_results = results
+                else:
+                    st.error("В файле недостаточно пустых строк для тестирования")
+
+# Шаг 2: Показ результатов тестирования
+if st.session_state.test_results:
+    st.header("2️⃣ Выберите модель")
+    st.markdown("Ниже представлены результаты генерации от 3 моделей:")
+    
+    models = {
+        "DeepSeek-V3": {
+            "icon": "🚀",
+            "description": "Лучшая цена/качество. $0.14 за 1M токенов",
+            "key": "deepseek"
+        },
+        "Claude Sonnet 3.5": {
+            "icon": "🧠",
+            "description": "Топовое качество. $3 за 1M токенов",
+            "key": "claude"
+        },
+        "GPT-4o": {
+            "icon": "⚡",
+            "description": "Быстрый и качественный. $2.50 за 1M токенов",
+            "key": "gpt4o"
+        }
+    }
+    
+    for model_name, model_info in models.items():
+        with st.expander(f"{model_info['icon']} {model_name} - {model_info['description']}", expanded=True):
+            df = pd.DataFrame(st.session_state.test_results[model_name])
+            st.dataframe(df, use_container_width=True, height=200)
+            
+            if st.button(f"✅ Выбрать {model_name}", key=f"choose_{model_info['key']}"):
+                st.session_state.chosen_model = model_info['key']
+                st.success(f"Выбрана модель: {model_name}")
+                st.rerun()
+
+# Шаг 3: Основная обработка
+if st.session_state.chosen_model:
+    st.header("3️⃣ Обработка заданий")
+    
+    # Выбор количества строк
+    batch_size = st.slider(
+        "Количество строк для обработки (макс 1000)",
+        min_value=10,
+        max_value=1000,
+        value=100,
+        step=10
     )
+    
+    if st.button("🚀 Начать обработку", type="primary"):
+        with st.spinner(f"Обработка {batch_size} строк..."):
+            wb = load_excel(st.session_state.uploaded_file)
+            if wb:
+                tasks, (col_task, col_answer) = get_tasks_from_excel(wb, max_rows=batch_size)
+                ws = wb.active
+                
+                if tasks:
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    # Выбор функции генерации
+                    if st.session_state.chosen_model == "deepseek":
+                        generate_func = generate_deepseek
+                    elif st.session_state.chosen_model == "claude":
+                        generate_func = generate_claude
+                    else:
+                        generate_func = generate_gpt4o
+                    
+                    results = []
+                    errors = 0
+                    
+                    # Параллельная обработка с 10 потоками
+                    MAX_WORKERS = 10
+                    
+                    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                        futures = {
+                            executor.submit(
+                                generate_func,
+                                task['discipline'],
+                                task['level'],
+                                task['prompt']
+                            ): task for task in tasks
+                        }
+                        
+                        completed = 0
+                        for future in as_completed(futures):
+                            task = futures[future]
+                            try:
+                                task_text, answer_text, error = future.result()
+                                
+                                if task_text and answer_text:
+                                    ws.cell(task['row'], col_task, task_text)
+                                    ws.cell(task['row'], col_answer, answer_text)
+                                    results.append({
+                                        "Строка": task['row'],
+                                        "Дисциплина": task['discipline'],
+                                        "Задание": task_text[:100] + "...",
+                                        "Ответ": answer_text[:100] + "..."
+                                    })
+                                else:
+                                    errors += 1
+                            except Exception as e:
+                                errors += 1
+                            
+                            completed += 1
+                            progress = completed / len(tasks)
+                            progress_bar.progress(progress)
+                            status_text.text(f"Обработано: {completed}/{len(tasks)}")
+                    
+                    # Сохраняем результат
+                    output = BytesIO()
+                    wb.save(output)
+                    output.seek(0)
+                    st.session_state.processed_data = output
+                    
+                    st.success(f"✅ Обработка завершена! Успешно: {len(results)}, Ошибок: {errors}")
+                    
+                    # Превью результатов
+                    st.subheader("📊 Превью результатов")
+                    df_results = pd.DataFrame(results)
+                    st.dataframe(df_results, use_container_width=True)
+                else:
+                    st.warning("Нет задач для обработки")
 
-    if excel_file:
-        # Читаем файл
-        df = pd.read_excel(excel_file)
-
-        st.success(f"✅ Загружено {len(df)} строк из Excel файла")
-
-        # Показываем превью данных
-        with st.expander("👀 Просмотр данных (первые 5 строк)"):
-            st.dataframe(df.head())
-
-        st.markdown("---")
-
-        # Настройки обработки
-        st.subheader("⚙️ Параметры генерации")
-
-        col3, col4 = st.columns(2)
-        with col3:
-            start_row = st.number_input("Начальная строка", min_value=0, max_value=len(df)-1, value=0)
-        with col4:
-            end_row = st.number_input("Конечная строка", min_value=start_row+1, max_value=len(df), value=min(start_row+10, len(df)))
-
-        batch_size = end_row - start_row
-        st.info(f"📊 Будет обработано строк: {batch_size}")
-
-        # Кнопка генерации
-        if st.button("🚀 Сгенерировать задания", type="primary", use_container_width=True):
-            # Прогресс бар
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-
-            # Обработка строк
-            for idx in range(start_row, end_row):
-                row = df.iloc[idx]
-
-                # Получаем данные из строки
-                competence = str(row.iloc[0])
-                indicator = str(row.iloc[1])
-                discipline = str(row.iloc[2])
-                task_type = str(row.iloc[3])
-
-                # Пропускаем строки с NaN в типе задания
-                if pd.isna(row.iloc[3]) or task_type == 'nan':
-                    status_text.warning(f"⏭️ Строка {idx+1}: пропущена (нет типа задания)")
-                    continue
-
-                status_text.info(f"🔄 Обработка строки {idx+1}/{end_row}...")
-
-                # Генерируем задание на основе шаблонов
-                prompt_template = prompts.get(task_type, "")
-                task, key = generate_task(
-                    prompt_template,
-                    competence,
-                    indicator,
-                    discipline,
-                    task_type
-                )
-
-                # Записываем результаты
-                df.at[idx, df.columns[4]] = task  # Столбец E (Задание)
-                df.at[idx, df.columns[5]] = key   # Столбец F (Ключ)
-
-                status_text.success(f"✅ Строка {idx+1} обработана")
-
-                # Обновляем прогресс
-                progress = (idx - start_row + 1) / batch_size
-                progress_bar.progress(progress)
-
-            progress_bar.progress(1.0)
-            status_text.success("🎉 Все задания сгенерированы!")
-
-            # Показываем результаты
-            st.markdown("---")
-            st.subheader("📊 Результаты")
-            st.dataframe(df.iloc[start_row:end_row])
-
-            # Экспорт
-            st.markdown("---")
-            st.subheader("💾 Экспорт результатов")
-
-            # Создаем Excel файл в памяти
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='Задания')
-
-            excel_data = output.getvalue()
-
-            st.download_button(
-                label="📥 Скачать результат (Excel)",
-                data=excel_data,
-                file_name="result_with_tasks.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-
-    else:
-        st.info("👆 Пожалуйста, загрузите файл megaphops.xlsx для начала работы")
-
-
-if __name__ == "__main__":
-    main()
+# Шаг 4: Скачивание
+if st.session_state.processed_data:
+    st.header("4️⃣ Скачать результат")
+    st.download_button(
+        label="📥 Скачать megaphops_filled.xlsx",
+        data=st.session_state.processed_data,
+        file_name="megaphops_filled.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type="primary"
+    )
