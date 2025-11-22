@@ -1091,18 +1091,18 @@ if st.session_state.chosen_model and st.session_state.chosen_program:
                                     # Записываем задание
                                     task_cell = ws.cell(task['row'], col_task, task_text)
                                     task_cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
-                                    task_cell.font = Font(bold=False)
+                                    task_cell.font = Font(bold=False, size=8)
 
                                     # Записываем ответ
                                     answer_cell = ws.cell(task['row'], col_answer, answer_text)
                                     answer_cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
-                                    answer_cell.font = Font(bold=False)
+                                    answer_cell.font = Font(bold=False, size=8)
 
                                     # Записываем название модели
                                     if col_model:
                                         model_cell = ws.cell(task['row'], col_model, model_names[st.session_state.chosen_model])
                                         model_cell.alignment = Alignment(horizontal='left', vertical='top')
-                                        model_cell.font = Font(bold=False)
+                                        model_cell.font = Font(bold=False, size=8)
 
                                     results.append({
                                         "Строка": task['row'],
@@ -1165,11 +1165,14 @@ if st.session_state.processed_data:
     st.markdown("Если вы хотите продолжить генерацию, загрузите обработанный файл заново. Система автоматически пропустит уже заполненные строки.")
 
     if st.button("🔄 Продолжить генерацию с обработанным файлом", type="secondary", use_container_width=True):
-        # Сбрасываем состояние для продолжения работы
+        # Сохраняем обработанный файл как uploaded_file для продолжения
+        st.session_state.uploaded_file = st.session_state.processed_data
+        st.session_state.uploaded_file.name = "megaphops_filled.xlsx"
+        st.session_state.uploaded_file_name = "megaphops_filled.xlsx"
+        # Сбрасываем только processed_data и test_results
         st.session_state.processed_data = None
-        st.session_state.chosen_model = None
-        st.session_state.chosen_program = None
         st.session_state.test_results = None
         st.session_state.show_model_selector = False
         st.session_state.continue_generation = True
+        # chosen_model и chosen_program НЕ сбрасываем - сохраняем выбор
         st.rerun()
