@@ -30,13 +30,26 @@ st.markdown("""
 
         /* Заменяем текст keyboard_double_arrow_right на иконку */
         [data-testid="collapsedControl"] {
-            font-size: 0 !important;
+            color: transparent !important;
+            width: 40px !important;
+            height: 40px !important;
+            position: relative !important;
+            overflow: hidden !important;
         }
 
         [data-testid="collapsedControl"]::before {
             content: "☰" !important;
+            position: absolute !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
             font-size: 24px !important;
+            color: rgba(49, 51, 63, 0.6) !important;
             font-family: Arial, sans-serif !important;
+        }
+
+        [data-testid="collapsedControl"]:hover::before {
+            color: rgba(49, 51, 63, 1) !important;
         }
     </style>
 """, unsafe_allow_html=True)
