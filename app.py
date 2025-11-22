@@ -80,19 +80,25 @@ os.environ["REPLICATE_API_TOKEN"] = REPLICATE_API_TOKEN
 
 # Стоимость за задание для каждой модели (в USD)
 MODEL_COSTS = {
-    "deepseek": 0.0002,  # DeepSeek-V3: ~$0.0002 за задание
-    "claude": 0.005,     # Claude Sonnet 3.5: ~$0.005 за задание
-    "gpt4o": 0.004,      # GPT-4o: ~$0.004 за задание
-    "llama": 0.002       # Llama 3.1 405B: ~$0.002 за задание
+    "deepseek": 0.0002,     # DeepSeek-V3: ~$0.0002 за задание
+    "claude": 0.005,        # Claude Sonnet 3.5: ~$0.005 за задание
+    "gpt4o": 0.004,         # GPT-4o: ~$0.004 за задание
+    "llama": 0.002,         # Llama 3.1 405B: ~$0.002 за задание
+    "gemini_flash": 0.004,  # Gemini 2.5 Flash: ~$0.004 за задание
+    "gpt51": 0.018,         # GPT-5.1 (high): ~$0.018 за задание (с reasoning)
+    "kimi": 0.0038          # Kimi K2: ~$0.0038 за задание
 }
 
 # Примерное время обработки одной задачи (в секундах)
 # При параллельной обработке с 10 потоками
 MODEL_TIME_PER_TASK = {
-    "deepseek": 4,   # DeepSeek-V3: ~4 сек
-    "claude": 5,     # Claude Sonnet 3.5: ~5 сек
-    "gpt4o": 4,      # GPT-4o: ~4 сек
-    "llama": 7       # Llama 3.1 405B: ~7 сек
+    "deepseek": 4,      # DeepSeek-V3: ~4 сек
+    "claude": 5,        # Claude Sonnet 3.5: ~5 сек
+    "gpt4o": 4,         # GPT-4o: ~4 сек
+    "llama": 7,         # Llama 3.1 405B: ~7 сек
+    "gemini_flash": 3,  # Gemini 2.5 Flash: ~3 сек
+    "gpt51": 9,         # GPT-5.1 (high): ~9 сек (с reasoning)
+    "kimi": 5           # Kimi K2: ~5 сек
 }
 
 # ============================================================================
@@ -471,6 +477,109 @@ def generate_llama(discipline, level, prompt_template):
     except Exception as e:
         return None, None, str(e)
 
+def generate_gemini_flash(discipline, level, prompt_template):
+    """Генерация через Gemini 2.5 Flash (via Replicate)"""
+    full_prompt = f"""{prompt_template}
+
+Дисциплина/модуль/практика: {discipline}
+
+Сгенерируй задание и ответ к нему в следующем формате:
+
+ЗАДАНИЕ:
+[текст задания]
+
+КЛЮЧ (ОТВЕТ):
+[правильный ответ]
+
+Важно: отвечай только на русском языке."""
+
+    try:
+        output = replicate.run(
+            "google/gemini-2.5-flash",
+            input={
+                "prompt": full_prompt,
+                "max_tokens": 2000,
+                "temperature": 0.7
+            }
+        )
+
+        response_text = ""
+        for item in output:
+            response_text += item
+
+        return parse_response(response_text)
+    except Exception as e:
+        return None, None, str(e)
+
+def generate_gpt51(discipline, level, prompt_template):
+    """Генерация через GPT-5.1 (high reasoning) (via Replicate)"""
+    full_prompt = f"""{prompt_template}
+
+Дисциплина/модуль/практика: {discipline}
+
+Сгенерируй задание и ответ к нему в следующем формате:
+
+ЗАДАНИЕ:
+[текст задания]
+
+КЛЮЧ (ОТВЕТ):
+[правильный ответ]
+
+Важно: отвечай только на русском языке."""
+
+    try:
+        output = replicate.run(
+            "openai/gpt-5.1",
+            input={
+                "prompt": full_prompt,
+                "max_tokens": 2000,
+                "temperature": 0.7,
+                "reasoning_effort": "high"
+            }
+        )
+
+        response_text = ""
+        for item in output:
+            response_text += item
+
+        return parse_response(response_text)
+    except Exception as e:
+        return None, None, str(e)
+
+def generate_kimi(discipline, level, prompt_template):
+    """Генерация через Kimi K2 (via Replicate)"""
+    full_prompt = f"""{prompt_template}
+
+Дисциплина/модуль/практика: {discipline}
+
+Сгенерируй задание и ответ к нему в следующем формате:
+
+ЗАДАНИЕ:
+[текст задания]
+
+КЛЮЧ (ОТВЕТ):
+[правильный ответ]
+
+Важно: отвечай только на русском языке."""
+
+    try:
+        output = replicate.run(
+            "moonshotai/kimi-k2-instruct",
+            input={
+                "prompt": full_prompt,
+                "max_tokens": 2000,
+                "temperature": 0.7
+            }
+        )
+
+        response_text = ""
+        for item in output:
+            response_text += item
+
+        return parse_response(response_text)
+    except Exception as e:
+        return None, None, str(e)
+
 def parse_response(response_text):
     """Парсит ответ модели"""
     task = ""
@@ -510,7 +619,7 @@ with st.sidebar:
     Выберите Excel файл с заданиями
 
     **2. Тестируйте модели**
-    Посмотрите примеры работы 4 AI моделей
+    Посмотрите примеры работы 7 AI моделей
 
     **3. Выберите модель**
     Определитесь с лучшим вариантом по цене/качеству
@@ -533,8 +642,8 @@ with st.sidebar:
 
     - **Параллельная обработка** — 10 заданий одновременно
     - **Точная стоимость** — расчёт по курсу ЦБ РФ
-    - **Время обработки** — ~4-7 сек на задание
-    - **Качество** — DeepSeek для экономии, Claude для топа
+    - **Время обработки** — ~3-9 сек на задание
+    - **7 моделей** — DeepSeek, Gemini, GPT, Claude, Llama, Kimi
 
     ---
 
@@ -554,7 +663,7 @@ if uploaded_file:
     
     # Кнопка для показа вариантов
     if st.button("🔍 Показать варианты заданий", type="primary"):
-        with st.spinner("Тестируем 4 AI модели на первых 2 заданиях..."):
+        with st.spinner("Тестируем 7 AI моделей на первых 2 заданиях..."):
             wb = load_excel(uploaded_file)
             if wb:
                 tasks, cols = get_tasks_from_excel(wb, max_rows=2)
@@ -564,7 +673,10 @@ if uploaded_file:
                         "DeepSeek-V3": [],
                         "Claude Sonnet 3.5": [],
                         "GPT-4o": [],
-                        "Llama 3.1 405B": []
+                        "Llama 3.1 405B": [],
+                        "Gemini 2.5 Flash": [],
+                        "GPT-5.1 (high)": [],
+                        "Kimi K2": []
                     }
 
                     # Генерируем для первых 2 заданий
@@ -609,6 +721,36 @@ if uploaded_file:
                             "Ответ": answer_text if answer_text else ""
                         })
 
+                        # Gemini 2.5 Flash
+                        task_text, answer_text, error = generate_gemini_flash(
+                            task['discipline'], task['level'], task['prompt']
+                        )
+                        results["Gemini 2.5 Flash"].append({
+                            "Дисциплина": task['discipline'],
+                            "Задание": task_text if task_text else f"Ошибка: {error}",
+                            "Ответ": answer_text if answer_text else ""
+                        })
+
+                        # GPT-5.1 (high)
+                        task_text, answer_text, error = generate_gpt51(
+                            task['discipline'], task['level'], task['prompt']
+                        )
+                        results["GPT-5.1 (high)"].append({
+                            "Дисциплина": task['discipline'],
+                            "Задание": task_text if task_text else f"Ошибка: {error}",
+                            "Ответ": answer_text if answer_text else ""
+                        })
+
+                        # Kimi K2
+                        task_text, answer_text, error = generate_kimi(
+                            task['discipline'], task['level'], task['prompt']
+                        )
+                        results["Kimi K2"].append({
+                            "Дисциплина": task['discipline'],
+                            "Задание": task_text if task_text else f"Ошибка: {error}",
+                            "Ответ": answer_text if answer_text else ""
+                        })
+
                     st.session_state.test_results = results
                 else:
                     st.error("В файле недостаточно пустых строк для тестирования")
@@ -616,7 +758,7 @@ if uploaded_file:
 # Шаг 2: Показ результатов тестирования
 if st.session_state.test_results:
     st.header("2️⃣ Выберите модель")
-    st.markdown("Ниже представлены результаты генерации от 4 моделей:")
+    st.markdown("Ниже представлены результаты генерации от 7 моделей:")
 
     # Получаем курс доллара для расчетов
     usd_rub_rate = get_usd_rub_rate()
@@ -645,11 +787,37 @@ if st.session_state.test_results:
             "icon": "🦙",
             "description": "405B параметров. Мощная модель",
             "key": "llama"
+        },
+        "Gemini 2.5 Flash": {
+            "icon": "💎",
+            "description": "Google быстрый. $0.30 input + $2.50 output за 1M",
+            "key": "gemini_flash"
+        },
+        "GPT-5.1 (high)": {
+            "icon": "🧪",
+            "description": "Топ reasoning. $1.25 input + $10 output за 1M",
+            "key": "gpt51"
+        },
+        "Kimi K2": {
+            "icon": "🌙",
+            "description": "Отлично с русским. $0.15 input + $2.50 output за 1M",
+            "key": "kimi"
         }
     }
 
-    # Показываем стоимость для всей таблицы для каждой модели (над превью)
+    for model_name, model_info in models.items():
+        with st.expander(f"{model_info['icon']} {model_name} - {model_info['description']}", expanded=False):
+            df = pd.DataFrame(st.session_state.test_results[model_name])
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
+            if st.button(f"✅ Выбрать", key=f"choose_{model_info['key']}"):
+                st.session_state.chosen_model = model_info['key']
+                st.success(f"Выбрана модель: {model_name}")
+                st.rerun()
+
+    # Показываем стоимость для всей таблицы для каждой модели (под превью)
     if total_tasks_count > 0:
+        st.markdown("---")
         st.markdown("#### 💰 Стоимость обработки всей таблицы:")
         for model_name, model_info in models.items():
             full_cost_usd, full_cost_rub = calculate_cost(total_tasks_count, model_info['key'], usd_rub_rate)
@@ -660,17 +828,6 @@ if st.session_state.test_results:
                 f"💰 {full_cost_rub:.2f} ₽ (${full_cost_usd:.2f}) • "
                 f"⏱️ {full_time}"
             )
-        st.markdown("---")
-
-    for model_name, model_info in models.items():
-        with st.expander(f"{model_info['icon']} {model_name} - {model_info['description']}", expanded=True):
-            df = pd.DataFrame(st.session_state.test_results[model_name])
-            st.dataframe(df, use_container_width=True, hide_index=True)
-
-            if st.button(f"✅ Выбрать", key=f"choose_{model_info['key']}"):
-                st.session_state.chosen_model = model_info['key']
-                st.success(f"Выбрана модель: {model_name}")
-                st.rerun()
 
 # Шаг 3: Выбор образовательной программы
 if st.session_state.chosen_model and st.session_state.uploaded_file:
@@ -714,7 +871,10 @@ if st.session_state.chosen_model and st.session_state.chosen_program:
         "deepseek": "DeepSeek-V3",
         "claude": "Claude Sonnet 3.5",
         "gpt4o": "GPT-4o",
-        "llama": "Llama 3.1 405B"
+        "llama": "Llama 3.1 405B",
+        "gemini_flash": "Gemini 2.5 Flash",
+        "gpt51": "GPT-5.1 (high)",
+        "kimi": "Kimi K2"
     }
 
     st.info(
@@ -776,6 +936,12 @@ if st.session_state.chosen_model and st.session_state.chosen_program:
                         generate_func = generate_gpt4o
                     elif st.session_state.chosen_model == "llama":
                         generate_func = generate_llama
+                    elif st.session_state.chosen_model == "gemini_flash":
+                        generate_func = generate_gemini_flash
+                    elif st.session_state.chosen_model == "gpt51":
+                        generate_func = generate_gpt51
+                    elif st.session_state.chosen_model == "kimi":
+                        generate_func = generate_kimi
                     else:
                         generate_func = generate_deepseek  # Fallback
                     
