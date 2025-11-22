@@ -42,6 +42,15 @@ MODEL_COSTS = {
     "llama": 0.002       # Llama 3.1 405B: ~$0.002 за задание
 }
 
+# Примерное время обработки одной задачи (в секундах)
+# При параллельной обработке с 10 потоками
+MODEL_TIME_PER_TASK = {
+    "deepseek": 4,   # DeepSeek-V3: ~4 сек
+    "claude": 5,     # Claude Sonnet 3.5: ~5 сек
+    "gpt4o": 4,      # GPT-4o: ~4 сек
+    "llama": 7       # Llama 3.1 405B: ~7 сек
+}
+
 # ============================================================================
 # ФУНКЦИИ ДЛЯ РАБОТЫ С КУРСОМ ВАЛЮТ
 # ============================================================================
@@ -64,6 +73,23 @@ def calculate_cost(num_tasks, model_key, usd_rub_rate):
     cost_usd = num_tasks * MODEL_COSTS[model_key]
     cost_rub = cost_usd * usd_rub_rate
     return cost_usd, cost_rub
+
+def calculate_time(num_tasks, model_key):
+    """Рассчитывает примерное время обработки с учётом параллелизма (10 потоков)"""
+    time_per_task = MODEL_TIME_PER_TASK[model_key]
+    # При 10 параллельных потоках делим на 10, но добавляем небольшой оверхед
+    total_seconds = (num_tasks * time_per_task) / 10 * 1.2
+
+    # Форматируем в минуты и секунды
+    if total_seconds < 60:
+        return f"~{int(total_seconds)} сек"
+    else:
+        minutes = int(total_seconds // 60)
+        seconds = int(total_seconds % 60)
+        if seconds > 0:
+            return f"~{minutes} мин {seconds} сек"
+        else:
+            return f"~{minutes} мин"
 
 # ============================================================================
 # ФУНКЦИИ ДЛЯ РАБОТЫ С ФАЙЛАМИ
@@ -158,6 +184,37 @@ def count_available_tasks_per_program(wb):
                 program_counts[program] += 1
 
     return program_counts
+
+def count_total_tasks(wb):
+    """Подсчитывает общее количество доступных задач во всём файле"""
+    ws = wb.active
+
+    # Находим заголовки
+    headers = {}
+    for col in range(1, ws.max_column + 1):
+        cell_value = ws.cell(1, col).value
+        if cell_value:
+            headers[cell_value.strip()] = col
+
+    col_discipline = headers.get('Дисциплина / модуль / практика')
+    col_level = headers.get('Уровень сложности')
+    col_task = headers.get('Задание')
+
+    total_count = 0
+    prompts = load_prompts()
+
+    for row in range(2, ws.max_row + 1):
+        discipline = ws.cell(row, col_discipline).value
+        level = ws.cell(row, col_level).value
+        current_task = ws.cell(row, col_task).value
+
+        # Проверяем что есть промпт для этого уровня сложности
+        if discipline and level and not current_task:
+            prompt_template = prompts.get(level)
+            if prompt_template:  # Считаем только если есть промпт
+                total_count += 1
+
+    return total_count
 
 def get_tasks_from_excel(wb, max_rows=None, filter_program=None):
     """Извлекает задачи из Excel"""
@@ -513,8 +570,12 @@ if st.session_state.chosen_model and st.session_state.uploaded_file:
     if wb:
         programs = get_educational_programs(wb)
         program_counts = count_available_tasks_per_program(wb)
+        total_tasks = count_total_tasks(wb)
 
         if programs:
+            # Показываем общую статистику
+            st.info(f"📊 **Всего доступных строк в файле:** {total_tasks}")
+
             st.markdown("Доступные образовательные программы:")
 
             # Создаём кнопки для каждой программы
@@ -553,9 +614,9 @@ if st.session_state.chosen_model and st.session_state.chosen_program:
 
     # Выбор количества строк
     batch_size = st.slider(
-        "Количество строк для обработки (макс 1000)",
+        "Количество строк для обработки (макс 2000)",
         min_value=10,
-        max_value=1000,
+        max_value=2000,
         value=100,
         step=10
     )
@@ -570,11 +631,15 @@ if st.session_state.chosen_model and st.session_state.chosen_program:
         usd_rub_rate
     )
 
-    # Отображаем стоимость
+    # Рассчитываем примерное время обработки
+    estimated_time = calculate_time(batch_size, st.session_state.chosen_model)
+
+    # Отображаем стоимость и время
     st.info(
         f"💰 **Примерная стоимость обработки {batch_size} заданий через {model_names[st.session_state.chosen_model]}:**\n\n"
         f"- ${estimated_cost_usd:.4f} USD\n"
-        f"- {estimated_cost_rub:.2f} ₽ (курс ЦБ РФ: {usd_rub_rate:.2f} ₽/$)"
+        f"- {estimated_cost_rub:.2f} ₽ (курс ЦБ РФ: {usd_rub_rate:.2f} ₽/$)\n\n"
+        f"⏱️ **Примерное время обработки:** {estimated_time}"
     )
 
     if st.button("🚀 Начать обработку", type="primary"):
