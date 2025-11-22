@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 from io import BytesIO
 import requests
+import re
 
 # Настройка страницы
 st.set_page_config(
@@ -78,6 +79,8 @@ if 'show_model_selector' not in st.session_state:
     st.session_state.show_model_selector = False
 if 'continue_generation' not in st.session_state:
     st.session_state.continue_generation = False
+if 'generation_count' not in st.session_state:
+    st.session_state.generation_count = 0
 
 # Получаем API ключи из secrets
 REPLICATE_API_TOKEN = st.secrets.get("REPLICATE_API_TOKEN", "")
@@ -693,6 +696,7 @@ if uploaded_file:
         st.session_state.processed_data = None
         st.session_state.show_model_selector = False
         st.session_state.continue_generation = False
+        st.session_state.generation_count = 0
         st.session_state.uploaded_file_name = uploaded_file.name
 
     st.session_state.uploaded_file = uploaded_file
@@ -813,6 +817,7 @@ else:
         st.session_state.processed_data = None
         st.session_state.show_model_selector = False
         st.session_state.continue_generation = False
+        st.session_state.generation_count = 0
 
 # Прямой выбор модели без тестирования
 if st.session_state.show_model_selector and not st.session_state.chosen_model:
@@ -1163,10 +1168,17 @@ if st.session_state.chosen_model and st.session_state.chosen_program:
 # Шаг 5: Скачивание
 if st.session_state.processed_data:
     st.header("5️⃣ Скачать результат")
+
+    # Формируем имя файла для скачивания
+    download_file_name = st.session_state.uploaded_file_name or "megaphops_filled.xlsx"
+    # Если имя не содержит .xlsx, добавляем
+    if not download_file_name.endswith('.xlsx'):
+        download_file_name += '.xlsx'
+
     st.download_button(
-        label="📥 Скачать megaphops_filled.xlsx",
+        label=f"📥 Скачать {download_file_name}",
         data=st.session_state.processed_data,
-        file_name="megaphops_filled.xlsx",
+        file_name=download_file_name,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         type="primary"
     )
@@ -1176,14 +1188,26 @@ if st.session_state.processed_data:
     st.markdown("Если вы хотите продолжить генерацию, загрузите обработанный файл заново. Система автоматически пропустит уже заполненные строки.")
 
     if st.button("🔄 Продолжить генерацию с обработанным файлом", type="secondary", use_container_width=True):
+        # Увеличиваем счетчик генераций
+        st.session_state.generation_count += 1
+
+        # Создаем новое имя файла с суффиксом _genN
+        original_name = st.session_state.uploaded_file_name or "megaphops_filled.xlsx"
+        # Убираем .xlsx в конце, если есть
+        base_name = original_name.replace('.xlsx', '')
+        # Убираем предыдущий суффикс _genN, если есть
+        base_name = re.sub(r'_gen\d+$', '', base_name)
+        # Добавляем новый суффикс
+        new_file_name = f"{base_name}_gen{st.session_state.generation_count}.xlsx"
+
         # Создаем копию обработанного файла для продолжения работы
         processed_file_copy = BytesIO(st.session_state.processed_data.getvalue())
         processed_file_copy.seek(0)
-        processed_file_copy.name = "megaphops_filled.xlsx"
+        processed_file_copy.name = new_file_name
 
         # Сохраняем копию как uploaded_file
         st.session_state.uploaded_file = processed_file_copy
-        st.session_state.uploaded_file_name = "megaphops_filled.xlsx"
+        st.session_state.uploaded_file_name = new_file_name
 
         # Сбрасываем состояние для продолжения работы
         st.session_state.processed_data = None
