@@ -21,10 +21,22 @@ st.markdown("""
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Icons&display=swap" rel="stylesheet">
 
     <style>
         * {
             font-family: 'Golos Text', sans-serif !important;
+        }
+
+        /* Заменяем текст keyboard_double_arrow_right на иконку */
+        [data-testid="collapsedControl"] {
+            font-size: 0 !important;
+        }
+
+        [data-testid="collapsedControl"]::before {
+            content: "☰" !important;
+            font-size: 24px !important;
+            font-family: Arial, sans-serif !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -467,6 +479,10 @@ def parse_response(response_text):
 
 # Боковое меню со справкой
 with st.sidebar:
+    # Добавляем логотип БФУ
+    st.image("bfu.png", use_container_width=True)
+    st.markdown("---")
+
     st.markdown("## 📖 Как пользоваться")
     st.markdown("""
     ### Быстрый старт
@@ -618,28 +634,21 @@ if st.session_state.test_results:
             df = pd.DataFrame(st.session_state.test_results[model_name])
             st.dataframe(df, use_container_width=True, hide_index=True)
 
-            # Расчет стоимости и времени для всей таблицы
-            if total_tasks_count > 0:
-                full_cost_usd, full_cost_rub = calculate_cost(total_tasks_count, model_info['key'], usd_rub_rate)
-                full_time = calculate_time(total_tasks_count, model_info['key'])
+            if st.button(f"✅ Выбрать", key=f"choose_{model_info['key']}"):
+                st.session_state.chosen_model = model_info['key']
+                st.success(f"Выбрана модель: {model_name}")
+                st.rerun()
 
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    if st.button(f"✅ Выбрать", key=f"choose_{model_info['key']}"):
-                        st.session_state.chosen_model = model_info['key']
-                        st.success(f"Выбрана модель: {model_name}")
-                        st.rerun()
-                with col2:
-                    st.markdown(
-                        f"**Для всей таблицы ({total_tasks_count} задач):** "
-                        f"💰 {full_cost_rub:.2f} ₽ (${full_cost_usd:.2f}) • "
-                        f"⏱️ {full_time}"
-                    )
-            else:
-                if st.button(f"✅ Выбрать", key=f"choose_{model_info['key']}"):
-                    st.session_state.chosen_model = model_info['key']
-                    st.success(f"Выбрана модель: {model_name}")
-                    st.rerun()
+        # Расчет стоимости и времени для всей таблицы (выносим за пределы expander)
+        if total_tasks_count > 0:
+            full_cost_usd, full_cost_rub = calculate_cost(total_tasks_count, model_info['key'], usd_rub_rate)
+            full_time = calculate_time(total_tasks_count, model_info['key'])
+
+            st.markdown(
+                f"**Для всей таблицы ({total_tasks_count} задач):** "
+                f"💰 {full_cost_rub:.2f} ₽ (${full_cost_usd:.2f}) • "
+                f"⏱️ {full_time}"
+            )
 
 # Шаг 3: Выбор образовательной программы
 if st.session_state.chosen_model and st.session_state.uploaded_file:
