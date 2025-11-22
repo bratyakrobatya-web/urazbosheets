@@ -81,6 +81,8 @@ if 'continue_generation' not in st.session_state:
     st.session_state.continue_generation = False
 if 'generation_count' not in st.session_state:
     st.session_state.generation_count = 0
+if 'original_file_name' not in st.session_state:
+    st.session_state.original_file_name = None
 
 # Получаем API ключи из secrets
 REPLICATE_API_TOKEN = st.secrets.get("REPLICATE_API_TOKEN", "")
@@ -693,8 +695,8 @@ if uploaded_file:
         st.session_state.continue_generation = False
         st.success(f"✅ Файл загружен: {st.session_state.uploaded_file_name}")
     else:
-        # Проверяем, изменился ли файл (новая загрузка)
-        if st.session_state.uploaded_file_name != uploaded_file.name:
+        # Проверяем, изменился ли ОРИГИНАЛЬНЫЙ файл (новая загрузка)
+        if st.session_state.original_file_name != uploaded_file.name:
             # Обнуляем кэш при загрузке нового файла
             st.session_state.test_results = None
             st.session_state.chosen_model = None
@@ -702,10 +704,14 @@ if uploaded_file:
             st.session_state.processed_data = None
             st.session_state.show_model_selector = False
             st.session_state.generation_count = 0
+            st.session_state.original_file_name = uploaded_file.name
             st.session_state.uploaded_file_name = uploaded_file.name
-
-        st.session_state.uploaded_file = uploaded_file
-        st.success(f"✅ Файл загружен: {uploaded_file.name}")
+            st.session_state.uploaded_file = uploaded_file
+            st.success(f"✅ Файл загружен: {uploaded_file.name}")
+        else:
+            # Тот же оригинальный файл - просто обновляем uploaded_file, но сохраняем имя
+            st.session_state.uploaded_file = uploaded_file
+            st.success(f"✅ Файл загружен: {st.session_state.uploaded_file_name}")
 
     # Две кнопки: показать варианты и выбрать модель сразу
     col1, col2 = st.columns(2)
@@ -816,6 +822,7 @@ else:
     if st.session_state.uploaded_file is not None:
         st.session_state.uploaded_file = None
         st.session_state.uploaded_file_name = None
+        st.session_state.original_file_name = None
         st.session_state.test_results = None
         st.session_state.chosen_model = None
         st.session_state.chosen_program = None
