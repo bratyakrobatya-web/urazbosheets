@@ -7,6 +7,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 from io import BytesIO
+import requests
 
 # Настройка страницы
 st.set_page_config(
@@ -30,6 +31,36 @@ REPLICATE_API_TOKEN = st.secrets.get("REPLICATE_API_TOKEN", "")
 
 # Инициализация клиента Replicate
 os.environ["REPLICATE_API_TOKEN"] = REPLICATE_API_TOKEN
+
+# Стоимость за задание для каждой модели (в USD)
+MODEL_COSTS = {
+    "deepseek": 0.0002,  # DeepSeek-V3: ~$0.0002 за задание
+    "claude": 0.005,     # Claude Sonnet 3.5: ~$0.005 за задание
+    "gpt4o": 0.004       # GPT-4o: ~$0.004 за задание
+}
+
+# ============================================================================
+# ФУНКЦИИ ДЛЯ РАБОТЫ С КУРСОМ ВАЛЮТ
+# ============================================================================
+
+@st.cache_data(ttl=3600)  # Кэшировать на 1 час
+def get_usd_rub_rate():
+    """Получает курс USD/RUB из ЦБ РФ"""
+    try:
+        response = requests.get("https://www.cbr-xml-daily.ru/daily_json.js", timeout=5)
+        data = response.json()
+        rate = data["Valute"]["USD"]["Value"]
+        return rate
+    except Exception as e:
+        # Если не удалось получить курс, используем примерный курс
+        st.warning(f"⚠️ Не удалось получить курс ЦБ РФ, используется примерный курс 90 ₽")
+        return 90.0
+
+def calculate_cost(num_tasks, model_key, usd_rub_rate):
+    """Рассчитывает стоимость в USD и RUB"""
+    cost_usd = num_tasks * MODEL_COSTS[model_key]
+    cost_rub = cost_usd * usd_rub_rate
+    return cost_usd, cost_rub
 
 # ============================================================================
 # ФУНКЦИИ ДЛЯ РАБОТЫ С ФАЙЛАМИ
@@ -330,7 +361,7 @@ if st.session_state.test_results:
 # Шаг 3: Основная обработка
 if st.session_state.chosen_model:
     st.header("3️⃣ Обработка заданий")
-    
+
     # Выбор количества строк
     batch_size = st.slider(
         "Количество строк для обработки (макс 1000)",
@@ -339,7 +370,30 @@ if st.session_state.chosen_model:
         value=100,
         step=10
     )
-    
+
+    # Получаем курс доллара
+    usd_rub_rate = get_usd_rub_rate()
+
+    # Рассчитываем примерную стоимость
+    estimated_cost_usd, estimated_cost_rub = calculate_cost(
+        batch_size,
+        st.session_state.chosen_model,
+        usd_rub_rate
+    )
+
+    # Отображаем стоимость
+    model_names = {
+        "deepseek": "DeepSeek-V3",
+        "claude": "Claude Sonnet 3.5",
+        "gpt4o": "GPT-4o"
+    }
+
+    st.info(
+        f"💰 **Примерная стоимость обработки {batch_size} заданий через {model_names[st.session_state.chosen_model]}:**\n\n"
+        f"- ${estimated_cost_usd:.4f} USD\n"
+        f"- {estimated_cost_rub:.2f} ₽ (курс ЦБ РФ: {usd_rub_rate:.2f} ₽/$)"
+    )
+
     if st.button("🚀 Начать обработку", type="primary"):
         with st.spinner(f"Обработка {batch_size} строк..."):
             wb = load_excel(st.session_state.uploaded_file)
@@ -405,9 +459,23 @@ if st.session_state.chosen_model:
                     wb.save(output)
                     output.seek(0)
                     st.session_state.processed_data = output
-                    
+
+                    # Рассчитываем фактическую стоимость
+                    actual_cost_usd, actual_cost_rub = calculate_cost(
+                        len(results),
+                        st.session_state.chosen_model,
+                        usd_rub_rate
+                    )
+
                     st.success(f"✅ Обработка завершена! Успешно: {len(results)}, Ошибок: {errors}")
-                    
+
+                    # Показываем фактическую стоимость
+                    st.info(
+                        f"💳 **Фактическая стоимость обработки {len(results)} заданий:**\n\n"
+                        f"- ${actual_cost_usd:.4f} USD\n"
+                        f"- {actual_cost_rub:.2f} ₽"
+                    )
+
                     # Превью результатов
                     st.subheader("📊 Превью результатов")
                     df_results = pd.DataFrame(results)
