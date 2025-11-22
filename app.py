@@ -650,6 +650,18 @@ if st.session_state.test_results:
 
     for model_name, model_info in models.items():
         with st.expander(f"{model_info['icon']} {model_name} - {model_info['description']}", expanded=True):
+            # Расчет стоимости и времени для всей таблицы (показываем над превью)
+            if total_tasks_count > 0:
+                full_cost_usd, full_cost_rub = calculate_cost(total_tasks_count, model_info['key'], usd_rub_rate)
+                full_time = calculate_time(total_tasks_count, model_info['key'])
+
+                st.markdown(
+                    f"**Для всей таблицы ({total_tasks_count} задач):** "
+                    f"💰 {full_cost_rub:.2f} ₽ (${full_cost_usd:.2f}) • "
+                    f"⏱️ {full_time}"
+                )
+                st.markdown("---")  # Разделитель
+
             df = pd.DataFrame(st.session_state.test_results[model_name])
             st.dataframe(df, use_container_width=True, hide_index=True)
 
@@ -657,17 +669,6 @@ if st.session_state.test_results:
                 st.session_state.chosen_model = model_info['key']
                 st.success(f"Выбрана модель: {model_name}")
                 st.rerun()
-
-        # Расчет стоимости и времени для всей таблицы (выносим за пределы expander)
-        if total_tasks_count > 0:
-            full_cost_usd, full_cost_rub = calculate_cost(total_tasks_count, model_info['key'], usd_rub_rate)
-            full_time = calculate_time(total_tasks_count, model_info['key'])
-
-            st.markdown(
-                f"**Для всей таблицы ({total_tasks_count} задач):** "
-                f"💰 {full_cost_rub:.2f} ₽ (${full_cost_usd:.2f}) • "
-                f"⏱️ {full_time}"
-            )
 
 # Шаг 3: Выбор образовательной программы
 if st.session_state.chosen_model and st.session_state.uploaded_file:
