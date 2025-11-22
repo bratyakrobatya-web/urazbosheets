@@ -802,6 +802,17 @@ if uploaded_file:
                     st.session_state.test_results = results
                 else:
                     st.error("В файле недостаточно пустых строк для тестирования")
+else:
+    # Если файл отжат (удален), обнуляем весь кэш
+    if st.session_state.uploaded_file is not None:
+        st.session_state.uploaded_file = None
+        st.session_state.uploaded_file_name = None
+        st.session_state.test_results = None
+        st.session_state.chosen_model = None
+        st.session_state.chosen_program = None
+        st.session_state.processed_data = None
+        st.session_state.show_model_selector = False
+        st.session_state.continue_generation = False
 
 # Прямой выбор модели без тестирования
 if st.session_state.show_model_selector and not st.session_state.chosen_model:
