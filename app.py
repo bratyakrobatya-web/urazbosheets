@@ -16,6 +16,19 @@ st.set_page_config(
     layout="wide"
 )
 
+# Подключаем шрифт Golos Text из Google Fonts
+st.markdown("""
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            font-family: 'Golos Text', sans-serif !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # Инициализация session_state
 if 'uploaded_file' not in st.session_state:
     st.session_state.uploaded_file = None
@@ -455,6 +468,47 @@ def parse_response(response_text):
 # ОСНОВНОЕ ПРИЛОЖЕНИЕ
 # ============================================================================
 
+# Боковое меню со справкой
+with st.sidebar:
+    st.markdown("## 📖 Как пользоваться")
+    st.markdown("""
+    ### Быстрый старт
+
+    **1. Загрузите файл**
+    Выберите Excel файл с заданиями
+
+    **2. Тестируйте модели**
+    Посмотрите примеры работы 4 AI моделей
+
+    **3. Выберите модель**
+    Определитесь с лучшим вариантом по цене/качеству
+
+    **4. Выберите программу**
+    Укажите образовательную программу для генерации
+
+    **5. Настройте объём**
+    Выберите количество заданий (до 2000 строк)
+
+    **6. Запустите обработку**
+    AI сгенерирует задания и ответы
+
+    **7. Скачайте результат**
+    Получите готовый Excel файл
+
+    ---
+
+    ### 💡 Полезно знать
+
+    - **Параллельная обработка** — 10 заданий одновременно
+    - **Точная стоимость** — расчёт по курсу ЦБ РФ
+    - **Время обработки** — ~4-7 сек на задание
+    - **Качество** — DeepSeek для экономии, Claude для топа
+
+    ---
+
+    *Генератор учебных заданий v1.0*
+    """)
+
 st.title("🎓 Генератор учебных заданий")
 st.markdown("Автоматическая генерация заданий через AI модели")
 
@@ -532,6 +586,13 @@ if st.session_state.test_results:
     st.header("2️⃣ Выберите модель")
     st.markdown("Ниже представлены результаты генерации от 4 моделей:")
 
+    # Получаем курс доллара для расчетов
+    usd_rub_rate = get_usd_rub_rate()
+
+    # Получаем общее количество задач в файле
+    wb = load_excel(st.session_state.uploaded_file)
+    total_tasks_count = count_total_tasks(wb) if wb else 0
+
     models = {
         "DeepSeek-V3": {
             "icon": "🚀",
@@ -554,16 +615,34 @@ if st.session_state.test_results:
             "key": "llama"
         }
     }
-    
+
     for model_name, model_info in models.items():
         with st.expander(f"{model_info['icon']} {model_name} - {model_info['description']}", expanded=True):
             df = pd.DataFrame(st.session_state.test_results[model_name])
-            st.dataframe(df, width='stretch', height=200)
-            
-            if st.button(f"✅ Выбрать {model_name}", key=f"choose_{model_info['key']}"):
-                st.session_state.chosen_model = model_info['key']
-                st.success(f"Выбрана модель: {model_name}")
-                st.rerun()
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
+            # Расчет стоимости и времени для всей таблицы
+            if total_tasks_count > 0:
+                full_cost_usd, full_cost_rub = calculate_cost(total_tasks_count, model_info['key'], usd_rub_rate)
+                full_time = calculate_time(total_tasks_count, model_info['key'])
+
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    if st.button(f"✅ Выбрать", key=f"choose_{model_info['key']}"):
+                        st.session_state.chosen_model = model_info['key']
+                        st.success(f"Выбрана модель: {model_name}")
+                        st.rerun()
+                with col2:
+                    st.markdown(
+                        f"**Для всей таблицы ({total_tasks_count} задач):** "
+                        f"💰 {full_cost_rub:.2f} ₽ (${full_cost_usd:.2f}) • "
+                        f"⏱️ {full_time}"
+                    )
+            else:
+                if st.button(f"✅ Выбрать", key=f"choose_{model_info['key']}"):
+                    st.session_state.chosen_model = model_info['key']
+                    st.success(f"Выбрана модель: {model_name}")
+                    st.rerun()
 
 # Шаг 3: Выбор образовательной программы
 if st.session_state.chosen_model and st.session_state.uploaded_file:
