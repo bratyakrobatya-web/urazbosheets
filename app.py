@@ -28,37 +28,29 @@ st.markdown("""
             font-family: 'Golos Text', sans-serif !important;
         }
 
-        /* Скрываем текст keyboard_double_arrow_right для разных версий Streamlit */
-        [data-testid="collapsedControl"],
-        [data-testid="stSidebarCollapsedControl"] {
+        /* Скрываем текст keyboard_double_arrow_right */
+        [data-testid="collapsedControl"] [data-testid="stIconMaterial"],
+        [data-testid="stSidebarCollapsedControl"] [data-testid="stIconMaterial"] {
+            font-size: 0 !important;
             width: 40px !important;
             height: 40px !important;
-            position: relative !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
         }
 
-        /* Скрываем текст внутри через font-size */
-        [data-testid="collapsedControl"] span,
-        [data-testid="stSidebarCollapsedControl"] span {
-            font-size: 0 !important;
-            display: block !important;
-        }
-
-        /* Показываем нашу иконку меню */
-        [data-testid="collapsedControl"] span::before,
-        [data-testid="stSidebarCollapsedControl"] span::before {
+        /* Показываем нашу иконку меню вместо keyboard_double_arrow_right */
+        [data-testid="collapsedControl"] [data-testid="stIconMaterial"]::before,
+        [data-testid="stSidebarCollapsedControl"] [data-testid="stIconMaterial"]::before {
             content: "☰" !important;
             font-size: 24px !important;
             color: rgba(49, 51, 63, 0.6) !important;
             font-family: Arial, sans-serif !important;
             line-height: 1 !important;
-            display: block !important;
         }
 
-        [data-testid="collapsedControl"]:hover span::before,
-        [data-testid="stSidebarCollapsedControl"]:hover span::before {
+        [data-testid="collapsedControl"]:hover [data-testid="stIconMaterial"]::before,
+        [data-testid="stSidebarCollapsedControl"]:hover [data-testid="stIconMaterial"]::before {
             color: rgba(49, 51, 63, 1) !important;
         }
     </style>
