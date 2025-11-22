@@ -39,7 +39,6 @@ MODEL_COSTS = {
     "deepseek": 0.0002,  # DeepSeek-V3: ~$0.0002 за задание
     "claude": 0.005,     # Claude Sonnet 3.5: ~$0.005 за задание
     "gpt4o": 0.004,      # GPT-4o: ~$0.004 за задание
-    "qwen": 0.0005,      # Qwen 2.5 72B: ~$0.0005 за задание
     "llama": 0.002       # Llama 3.1 405B: ~$0.002 за задание
 }
 
@@ -340,40 +339,6 @@ def generate_gpt4o(discipline, level, prompt_template):
     except Exception as e:
         return None, None, str(e)
 
-def generate_qwen(discipline, level, prompt_template):
-    """Генерация через Qwen 2.5 72B Instruct (via Replicate)"""
-    full_prompt = f"""{prompt_template}
-
-Дисциплина/модуль/практика: {discipline}
-
-Сгенерируй задание и ответ к нему в следующем формате:
-
-ЗАДАНИЕ:
-[текст задания]
-
-КЛЮЧ (ОТВЕТ):
-[правильный ответ]
-
-Важно: отвечай только на русском языке."""
-
-    try:
-        output = replicate.run(
-            "qwen/qwen2.5-72b-instruct",
-            input={
-                "prompt": full_prompt,
-                "max_tokens": 2000,
-                "temperature": 0.7
-            }
-        )
-
-        response_text = ""
-        for item in output:
-            response_text += item
-
-        return parse_response(response_text)
-    except Exception as e:
-        return None, None, str(e)
-
 def generate_llama(discipline, level, prompt_template):
     """Генерация через Llama 3.1 405B Instruct (via Replicate)"""
     full_prompt = f"""{prompt_template}
@@ -446,7 +411,7 @@ if uploaded_file:
     
     # Кнопка для показа вариантов
     if st.button("🔍 Показать варианты заданий", type="primary"):
-        with st.spinner("Тестируем 5 AI моделей на первых 2 заданиях..."):
+        with st.spinner("Тестируем 4 AI модели на первых 2 заданиях..."):
             wb = load_excel(uploaded_file)
             if wb:
                 tasks, cols = get_tasks_from_excel(wb, max_rows=2)
@@ -456,7 +421,6 @@ if uploaded_file:
                         "DeepSeek-V3": [],
                         "Claude Sonnet 3.5": [],
                         "GPT-4o": [],
-                        "Qwen 2.5 72B": [],
                         "Llama 3.1 405B": []
                     }
 
@@ -492,16 +456,6 @@ if uploaded_file:
                             "Ответ": answer_text if answer_text else ""
                         })
 
-                        # Qwen 2.5 72B
-                        task_text, answer_text, error = generate_qwen(
-                            task['discipline'], task['level'], task['prompt']
-                        )
-                        results["Qwen 2.5 72B"].append({
-                            "Дисциплина": task['discipline'],
-                            "Задание": task_text if task_text else f"Ошибка: {error}",
-                            "Ответ": answer_text if answer_text else ""
-                        })
-
                         # Llama 3.1 405B
                         task_text, answer_text, error = generate_llama(
                             task['discipline'], task['level'], task['prompt']
@@ -519,7 +473,7 @@ if uploaded_file:
 # Шаг 2: Показ результатов тестирования
 if st.session_state.test_results:
     st.header("2️⃣ Выберите модель")
-    st.markdown("Ниже представлены результаты генерации от 5 моделей:")
+    st.markdown("Ниже представлены результаты генерации от 4 моделей:")
 
     models = {
         "DeepSeek-V3": {
@@ -536,11 +490,6 @@ if st.session_state.test_results:
             "icon": "⚡",
             "description": "Быстрый и качественный. $2.50 за 1M токенов",
             "key": "gpt4o"
-        },
-        "Qwen 2.5 72B": {
-            "icon": "🎯",
-            "description": "72B параметров. Хорошее качество",
-            "key": "qwen"
         },
         "Llama 3.1 405B": {
             "icon": "🦙",
@@ -597,7 +546,6 @@ if st.session_state.chosen_model and st.session_state.chosen_program:
         "deepseek": "DeepSeek-V3",
         "claude": "Claude Sonnet 3.5",
         "gpt4o": "GPT-4o",
-        "qwen": "Qwen 2.5 72B",
         "llama": "Llama 3.1 405B"
     }
 
@@ -654,8 +602,6 @@ if st.session_state.chosen_model and st.session_state.chosen_program:
                         generate_func = generate_claude
                     elif st.session_state.chosen_model == "gpt4o":
                         generate_func = generate_gpt4o
-                    elif st.session_state.chosen_model == "qwen":
-                        generate_func = generate_qwen
                     elif st.session_state.chosen_model == "llama":
                         generate_func = generate_llama
                     else:
