@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import openpyxl
+from openpyxl.styles import Alignment, Font
 import csv
 import replicate
 import os
@@ -63,6 +64,8 @@ st.markdown("""
 # Инициализация session_state
 if 'uploaded_file' not in st.session_state:
     st.session_state.uploaded_file = None
+if 'uploaded_file_name' not in st.session_state:
+    st.session_state.uploaded_file_name = None
 if 'test_results' not in st.session_state:
     st.session_state.test_results = None
 if 'chosen_model' not in st.session_state:
@@ -73,6 +76,8 @@ if 'processed_data' not in st.session_state:
     st.session_state.processed_data = None
 if 'show_model_selector' not in st.session_state:
     st.session_state.show_model_selector = False
+if 'continue_generation' not in st.session_state:
+    st.session_state.continue_generation = False
 
 # Получаем API ключи из secrets
 REPLICATE_API_TOKEN = st.secrets.get("REPLICATE_API_TOKEN", "")
@@ -679,6 +684,17 @@ st.header("1️⃣ Загрузите файл")
 uploaded_file = st.file_uploader("Выберите megaphops.xlsx", type=['xlsx'])
 
 if uploaded_file:
+    # Проверяем, изменился ли файл (новая загрузка)
+    if st.session_state.uploaded_file_name != uploaded_file.name:
+        # Обнуляем кэш при загрузке нового файла
+        st.session_state.test_results = None
+        st.session_state.chosen_model = None
+        st.session_state.chosen_program = None
+        st.session_state.processed_data = None
+        st.session_state.show_model_selector = False
+        st.session_state.continue_generation = False
+        st.session_state.uploaded_file_name = uploaded_file.name
+
     st.session_state.uploaded_file = uploaded_file
     st.success(f"✅ Файл загружен: {uploaded_file.name}")
 
@@ -1072,11 +1088,22 @@ if st.session_state.chosen_model and st.session_state.chosen_program:
                                 task_text, answer_text, error = future.result()
                                 
                                 if task_text and answer_text:
-                                    ws.cell(task['row'], col_task, task_text)
-                                    ws.cell(task['row'], col_answer, answer_text)
+                                    # Записываем задание
+                                    task_cell = ws.cell(task['row'], col_task, task_text)
+                                    task_cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+                                    task_cell.font = Font(bold=False)
+
+                                    # Записываем ответ
+                                    answer_cell = ws.cell(task['row'], col_answer, answer_text)
+                                    answer_cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+                                    answer_cell.font = Font(bold=False)
+
                                     # Записываем название модели
                                     if col_model:
-                                        ws.cell(task['row'], col_model, model_names[st.session_state.chosen_model])
+                                        model_cell = ws.cell(task['row'], col_model, model_names[st.session_state.chosen_model])
+                                        model_cell.alignment = Alignment(horizontal='left', vertical='top')
+                                        model_cell.font = Font(bold=False)
+
                                     results.append({
                                         "Строка": task['row'],
                                         "Дисциплина": task['discipline'],
@@ -1132,3 +1159,17 @@ if st.session_state.processed_data:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         type="primary"
     )
+
+    st.markdown("---")
+    st.markdown("### 🔄 Продолжить работу?")
+    st.markdown("Если вы хотите продолжить генерацию, загрузите обработанный файл заново. Система автоматически пропустит уже заполненные строки.")
+
+    if st.button("🔄 Продолжить генерацию с обработанным файлом", type="secondary", use_container_width=True):
+        # Сбрасываем состояние для продолжения работы
+        st.session_state.processed_data = None
+        st.session_state.chosen_model = None
+        st.session_state.chosen_program = None
+        st.session_state.test_results = None
+        st.session_state.show_model_selector = False
+        st.session_state.continue_generation = True
+        st.rerun()
