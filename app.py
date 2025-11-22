@@ -633,7 +633,7 @@ if st.session_state.test_results:
         },
         "Claude Sonnet 3.5": {
             "icon": "🧠",
-            "description": "Топовое качество. $3 за 1M токенов",
+            "description": "Топовое качество. $3 за 1M токenов",
             "key": "claude"
         },
         "GPT-4o": {
@@ -648,20 +648,22 @@ if st.session_state.test_results:
         }
     }
 
+    # Показываем стоимость для всей таблицы для каждой модели (над превью)
+    if total_tasks_count > 0:
+        st.markdown("#### 💰 Стоимость обработки всей таблицы:")
+        for model_name, model_info in models.items():
+            full_cost_usd, full_cost_rub = calculate_cost(total_tasks_count, model_info['key'], usd_rub_rate)
+            full_time = calculate_time(total_tasks_count, model_info['key'])
+
+            st.markdown(
+                f"**{model_info['icon']} {model_name} ({total_tasks_count} задач):** "
+                f"💰 {full_cost_rub:.2f} ₽ (${full_cost_usd:.2f}) • "
+                f"⏱️ {full_time}"
+            )
+        st.markdown("---")
+
     for model_name, model_info in models.items():
         with st.expander(f"{model_info['icon']} {model_name} - {model_info['description']}", expanded=True):
-            # Расчет стоимости и времени для всей таблицы (показываем над превью)
-            if total_tasks_count > 0:
-                full_cost_usd, full_cost_rub = calculate_cost(total_tasks_count, model_info['key'], usd_rub_rate)
-                full_time = calculate_time(total_tasks_count, model_info['key'])
-
-                st.markdown(
-                    f"**Для всей таблицы ({total_tasks_count} задач):** "
-                    f"💰 {full_cost_rub:.2f} ₽ (${full_cost_usd:.2f}) • "
-                    f"⏱️ {full_time}"
-                )
-                st.markdown("---")  # Разделитель
-
             df = pd.DataFrame(st.session_state.test_results[model_name])
             st.dataframe(df, use_container_width=True, hide_index=True)
 
