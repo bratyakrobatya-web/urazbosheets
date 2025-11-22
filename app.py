@@ -24,25 +24,29 @@ st.markdown("""
     <link href="https://fonts.googleapis.com/css2?family=Material+Icons&display=swap" rel="stylesheet">
 
     <style>
-        * {
+        /* Применяем Golos Text ко всем элементам, кроме иконок Material */
+        *:not([data-testid="stIconMaterial"]) {
             font-family: 'Golos Text', sans-serif !important;
         }
 
-        /* Скрываем текст keyboard_double_arrow_right */
+        /* Полностью скрываем текст keyboard_double_arrow_right */
         [data-testid="collapsedControl"] [data-testid="stIconMaterial"],
         [data-testid="stSidebarCollapsedControl"] [data-testid="stIconMaterial"] {
-            font-size: 0 !important;
+            visibility: hidden !important;
+            position: relative !important;
             width: 40px !important;
             height: 40px !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
         }
 
         /* Показываем нашу иконку меню вместо keyboard_double_arrow_right */
         [data-testid="collapsedControl"] [data-testid="stIconMaterial"]::before,
         [data-testid="stSidebarCollapsedControl"] [data-testid="stIconMaterial"]::before {
             content: "☰" !important;
+            visibility: visible !important;
+            position: absolute !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
             font-size: 24px !important;
             color: rgba(49, 51, 63, 0.6) !important;
             font-family: Arial, sans-serif !important;
