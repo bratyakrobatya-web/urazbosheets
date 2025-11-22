@@ -327,7 +327,7 @@ def generate_qwen(discipline, level, prompt_template):
 
     try:
         output = replicate.run(
-            "lucataco/qwen2.5-72b-instruct",
+            "qwen/qwen2.5-72b-instruct",
             input={
                 "prompt": full_prompt,
                 "max_tokens": 2000,
@@ -521,7 +521,7 @@ if st.session_state.test_results:
     for model_name, model_info in models.items():
         with st.expander(f"{model_info['icon']} {model_name} - {model_info['description']}", expanded=True):
             df = pd.DataFrame(st.session_state.test_results[model_name])
-            st.dataframe(df, use_container_width=True, height=200)
+            st.dataframe(df, width='stretch', height=200)
             
             if st.button(f"✅ Выбрать {model_name}", key=f"choose_{model_info['key']}"):
                 st.session_state.chosen_model = model_info['key']
@@ -696,7 +696,7 @@ if st.session_state.chosen_model and st.session_state.chosen_program:
                     # Превью результатов
                     st.subheader("📊 Превью результатов")
                     df_results = pd.DataFrame(results)
-                    st.dataframe(df_results, use_container_width=True)
+                    st.dataframe(df_results, width='stretch')
                 else:
                     st.warning("Нет задач для обработки")
 
