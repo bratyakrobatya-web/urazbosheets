@@ -23,6 +23,8 @@ if 'test_results' not in st.session_state:
     st.session_state.test_results = None
 if 'chosen_model' not in st.session_state:
     st.session_state.chosen_model = None
+if 'chosen_program' not in st.session_state:
+    st.session_state.chosen_program = None
 if 'processed_data' not in st.session_state:
     st.session_state.processed_data = None
 
@@ -96,45 +98,76 @@ def load_excel(file):
         st.error(f"Ошибка загрузки Excel: {e}")
         return None
 
-def get_tasks_from_excel(wb, max_rows=None):
-    """Извлекает задачи из Excel"""
+def get_educational_programs(wb):
+    """Извлекает уникальные образовательные программы из Excel"""
     ws = wb.active
-    
+
     # Находим заголовки
     headers = {}
     for col in range(1, ws.max_column + 1):
         cell_value = ws.cell(1, col).value
         if cell_value:
             headers[cell_value.strip()] = col
-    
+
+    col_program = headers.get('Образовательная программа')
+
+    if not col_program:
+        return []
+
+    programs = set()
+    for row in range(2, ws.max_row + 1):
+        program = ws.cell(row, col_program).value
+        if program:
+            programs.add(program.strip())
+
+    return sorted(list(programs))
+
+def get_tasks_from_excel(wb, max_rows=None, filter_program=None):
+    """Извлекает задачи из Excel"""
+    ws = wb.active
+
+    # Находим заголовки
+    headers = {}
+    for col in range(1, ws.max_column + 1):
+        cell_value = ws.cell(1, col).value
+        if cell_value:
+            headers[cell_value.strip()] = col
+
+    col_program = headers.get('Образовательная программа')
     col_discipline = headers.get('Дисциплина / модуль / практика')
     col_level = headers.get('Уровень сложности')
     col_task = headers.get('Задание')
     col_answer = headers.get('Ключ (ответ)')
-    
+
     tasks = []
     prompts = load_prompts()
-    
+
     # Row 1 contains headers, data starts from row 2
     # To get max_rows data rows, we need to go from row 2 to row (2 + max_rows - 1) inclusive
     # range(2, 2 + max_rows) = range(2, max_rows + 2)
     row_limit = min(max_rows + 2, ws.max_row + 1) if max_rows else ws.max_row + 1
-    
+
     for row in range(2, row_limit):
+        program = ws.cell(row, col_program).value if col_program else None
         discipline = ws.cell(row, col_discipline).value
         level = ws.cell(row, col_level).value
         current_task = ws.cell(row, col_task).value
-        
+
+        # Фильтруем по программе если задан фильтр
+        if filter_program and program != filter_program:
+            continue
+
         if discipline and level and not current_task:
             prompt_template = prompts.get(level)
             if prompt_template:
                 tasks.append({
                     'row': row,
+                    'program': program,
                     'discipline': discipline,
                     'level': level,
                     'prompt': prompt_template
                 })
-    
+
     return tasks, (col_task, col_answer)
 
 # ============================================================================
@@ -358,9 +391,44 @@ if st.session_state.test_results:
                 st.success(f"Выбрана модель: {model_name}")
                 st.rerun()
 
-# Шаг 3: Основная обработка
-if st.session_state.chosen_model:
-    st.header("3️⃣ Обработка заданий")
+# Шаг 3: Выбор образовательной программы
+if st.session_state.chosen_model and st.session_state.uploaded_file:
+    st.header("3️⃣ Выберите образовательную программу")
+
+    wb = load_excel(st.session_state.uploaded_file)
+    if wb:
+        programs = get_educational_programs(wb)
+
+        if programs:
+            st.markdown("Доступные образовательные программы:")
+
+            # Создаём кнопки для каждой программы
+            cols = st.columns(min(3, len(programs)))  # Максимум 3 колонки
+            for idx, program in enumerate(programs):
+                col_idx = idx % 3
+                with cols[col_idx]:
+                    if st.button(f"📚 {program}", key=f"program_{idx}", use_container_width=True):
+                        st.session_state.chosen_program = program
+                        st.success(f"Выбрана программа: {program}")
+                        st.rerun()
+        else:
+            st.warning("⚠️ В файле не найдены образовательные программы. Убедитесь, что столбец 'Образовательная программа' заполнен.")
+
+# Шаг 4: Основная обработка
+if st.session_state.chosen_model and st.session_state.chosen_program:
+    st.header("4️⃣ Обработка заданий")
+
+    # Показываем выбранные параметры
+    model_names = {
+        "deepseek": "DeepSeek-V3",
+        "claude": "Claude Sonnet 3.5",
+        "gpt4o": "GPT-4o"
+    }
+
+    st.info(
+        f"**Выбранная модель:** {model_names[st.session_state.chosen_model]}\n\n"
+        f"**Образовательная программа:** {st.session_state.chosen_program}"
+    )
 
     # Выбор количества строк
     batch_size = st.slider(
@@ -382,12 +450,6 @@ if st.session_state.chosen_model:
     )
 
     # Отображаем стоимость
-    model_names = {
-        "deepseek": "DeepSeek-V3",
-        "claude": "Claude Sonnet 3.5",
-        "gpt4o": "GPT-4o"
-    }
-
     st.info(
         f"💰 **Примерная стоимость обработки {batch_size} заданий через {model_names[st.session_state.chosen_model]}:**\n\n"
         f"- ${estimated_cost_usd:.4f} USD\n"
@@ -395,10 +457,14 @@ if st.session_state.chosen_model:
     )
 
     if st.button("🚀 Начать обработку", type="primary"):
-        with st.spinner(f"Обработка {batch_size} строк..."):
+        with st.spinner(f"Обработка {batch_size} строк программы '{st.session_state.chosen_program}'..."):
             wb = load_excel(st.session_state.uploaded_file)
             if wb:
-                tasks, (col_task, col_answer) = get_tasks_from_excel(wb, max_rows=batch_size)
+                tasks, (col_task, col_answer) = get_tasks_from_excel(
+                    wb,
+                    max_rows=batch_size,
+                    filter_program=st.session_state.chosen_program
+                )
                 ws = wb.active
                 
                 if tasks:
@@ -483,9 +549,9 @@ if st.session_state.chosen_model:
                 else:
                     st.warning("Нет задач для обработки")
 
-# Шаг 4: Скачивание
+# Шаг 5: Скачивание
 if st.session_state.processed_data:
-    st.header("4️⃣ Скачать результат")
+    st.header("5️⃣ Скачать результат")
     st.download_button(
         label="📥 Скачать megaphops_filled.xlsx",
         data=st.session_state.processed_data,
