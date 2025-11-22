@@ -709,8 +709,12 @@ if uploaded_file:
             st.session_state.uploaded_file = uploaded_file
             st.success(f"✅ Файл загружен: {uploaded_file.name}")
         else:
-            # Тот же оригинальный файл - просто обновляем uploaded_file, но сохраняем имя
-            st.session_state.uploaded_file = uploaded_file
+            # Тот же оригинальный файл
+            # Если это обработанный файл (generation_count > 0), НЕ перезаписываем uploaded_file
+            if st.session_state.generation_count == 0:
+                # Это оригинальный файл без обработки - обновляем
+                st.session_state.uploaded_file = uploaded_file
+            # В любом случае показываем сохранённое имя
             st.success(f"✅ Файл загружен: {st.session_state.uploaded_file_name}")
 
     # Две кнопки: показать варианты и выбрать модель сразу
