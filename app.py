@@ -687,20 +687,25 @@ st.header("1️⃣ Загрузите файл")
 uploaded_file = st.file_uploader("Выберите megaphops.xlsx", type=['xlsx'])
 
 if uploaded_file:
-    # Проверяем, изменился ли файл (новая загрузка)
-    if st.session_state.uploaded_file_name != uploaded_file.name:
-        # Обнуляем кэш при загрузке нового файла
-        st.session_state.test_results = None
-        st.session_state.chosen_model = None
-        st.session_state.chosen_program = None
-        st.session_state.processed_data = None
-        st.session_state.show_model_selector = False
+    # Если продолжаем генерацию, не сбрасываем кэш и не перезаписываем файл
+    if st.session_state.continue_generation:
+        # Просто сбрасываем флаг и показываем сообщение с новым именем файла
         st.session_state.continue_generation = False
-        st.session_state.generation_count = 0
-        st.session_state.uploaded_file_name = uploaded_file.name
+        st.success(f"✅ Файл загружен: {st.session_state.uploaded_file_name}")
+    else:
+        # Проверяем, изменился ли файл (новая загрузка)
+        if st.session_state.uploaded_file_name != uploaded_file.name:
+            # Обнуляем кэш при загрузке нового файла
+            st.session_state.test_results = None
+            st.session_state.chosen_model = None
+            st.session_state.chosen_program = None
+            st.session_state.processed_data = None
+            st.session_state.show_model_selector = False
+            st.session_state.generation_count = 0
+            st.session_state.uploaded_file_name = uploaded_file.name
 
-    st.session_state.uploaded_file = uploaded_file
-    st.success(f"✅ Файл загружен: {uploaded_file.name}")
+        st.session_state.uploaded_file = uploaded_file
+        st.success(f"✅ Файл загружен: {uploaded_file.name}")
 
     # Две кнопки: показать варианты и выбрать модель сразу
     col1, col2 = st.columns(2)
