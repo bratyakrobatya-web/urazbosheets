@@ -1,9 +1,15 @@
+# Streamlit secrets
+.streamlit/secrets.toml
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+env/
+venv/
+ENV/
 build/
 develop-eggs/
 dist/
@@ -20,13 +26,7 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
-venv/
-ENV/
-env/
-.venv
-
-# IDEs
+# IDE
 .vscode/
 .idea/
 *.swp
@@ -37,12 +37,7 @@ env/
 .DS_Store
 Thumbs.db
 
-# Streamlit
-.streamlit/
-
-# Environment variables
-.env
-
-# Output files
-result_*.xlsx
-output_*.xlsx
+# Project specific
+megaphops_filled.xlsx
+*.xlsx
+!megaphops.xlsx
