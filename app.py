@@ -1176,10 +1176,15 @@ if st.session_state.processed_data:
     st.markdown("Если вы хотите продолжить генерацию, загрузите обработанный файл заново. Система автоматически пропустит уже заполненные строки.")
 
     if st.button("🔄 Продолжить генерацию с обработанным файлом", type="secondary", use_container_width=True):
-        # Сохраняем обработанный файл как uploaded_file для продолжения
-        st.session_state.uploaded_file = st.session_state.processed_data
-        st.session_state.uploaded_file.name = "megaphops_filled.xlsx"
+        # Создаем копию обработанного файла для продолжения работы
+        processed_file_copy = BytesIO(st.session_state.processed_data.getvalue())
+        processed_file_copy.seek(0)
+        processed_file_copy.name = "megaphops_filled.xlsx"
+
+        # Сохраняем копию как uploaded_file
+        st.session_state.uploaded_file = processed_file_copy
         st.session_state.uploaded_file_name = "megaphops_filled.xlsx"
+
         # Сбрасываем только processed_data и test_results
         st.session_state.processed_data = None
         st.session_state.test_results = None
