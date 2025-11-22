@@ -144,6 +144,7 @@ def count_available_tasks_per_program(wb):
         return {}
 
     program_counts = {}
+    prompts = load_prompts()
 
     for row in range(2, ws.max_row + 1):
         program = ws.cell(row, col_program).value
@@ -151,11 +152,14 @@ def count_available_tasks_per_program(wb):
         level = ws.cell(row, col_level).value
         current_task = ws.cell(row, col_task).value
 
+        # Проверяем что есть промпт для этого уровня сложности
         if program and discipline and level and not current_task:
-            program = program.strip()
-            if program not in program_counts:
-                program_counts[program] = 0
-            program_counts[program] += 1
+            prompt_template = prompts.get(level)
+            if prompt_template:  # Считаем только если есть промпт
+                program = program.strip()
+                if program not in program_counts:
+                    program_counts[program] = 0
+                program_counts[program] += 1
 
     return program_counts
 
@@ -179,31 +183,58 @@ def get_tasks_from_excel(wb, max_rows=None, filter_program=None):
     tasks = []
     prompts = load_prompts()
 
-    # Row 1 contains headers, data starts from row 2
-    # To get max_rows data rows, we need to go from row 2 to row (2 + max_rows - 1) inclusive
-    # range(2, 2 + max_rows) = range(2, max_rows + 2)
-    row_limit = min(max_rows + 2, ws.max_row + 1) if max_rows else ws.max_row + 1
+    # Если фильтруем по программе, сначала собираем ВСЕ задачи этой программы,
+    # а потом ограничиваем количество. Иначе можем пропустить строки программы.
+    if filter_program:
+        # Сканируем весь файл для поиска строк нужной программы
+        for row in range(2, ws.max_row + 1):
+            program = ws.cell(row, col_program).value if col_program else None
+            discipline = ws.cell(row, col_discipline).value
+            level = ws.cell(row, col_level).value
+            current_task = ws.cell(row, col_task).value
 
-    for row in range(2, row_limit):
-        program = ws.cell(row, col_program).value if col_program else None
-        discipline = ws.cell(row, col_discipline).value
-        level = ws.cell(row, col_level).value
-        current_task = ws.cell(row, col_task).value
+            # Нормализуем строки для сравнения (убираем пробелы по краям)
+            program_normalized = program.strip() if program else None
+            filter_normalized = filter_program.strip() if filter_program else None
 
-        # Фильтруем по программе если задан фильтр
-        if filter_program and program != filter_program:
-            continue
+            # Фильтруем по программе
+            if program_normalized != filter_normalized:
+                continue
 
-        if discipline and level and not current_task:
-            prompt_template = prompts.get(level)
-            if prompt_template:
-                tasks.append({
-                    'row': row,
-                    'program': program,
-                    'discipline': discipline,
-                    'level': level,
-                    'prompt': prompt_template
-                })
+            if discipline and level and not current_task:
+                prompt_template = prompts.get(level)
+                if prompt_template:
+                    tasks.append({
+                        'row': row,
+                        'program': program,
+                        'discipline': discipline,
+                        'level': level,
+                        'prompt': prompt_template
+                    })
+
+                    # Ограничиваем количество задач после сбора
+                    if max_rows and len(tasks) >= max_rows:
+                        break
+    else:
+        # Без фильтра по программе - используем старую логику
+        row_limit = min(max_rows + 2, ws.max_row + 1) if max_rows else ws.max_row + 1
+
+        for row in range(2, row_limit):
+            program = ws.cell(row, col_program).value if col_program else None
+            discipline = ws.cell(row, col_discipline).value
+            level = ws.cell(row, col_level).value
+            current_task = ws.cell(row, col_task).value
+
+            if discipline and level and not current_task:
+                prompt_template = prompts.get(level)
+                if prompt_template:
+                    tasks.append({
+                        'row': row,
+                        'program': program,
+                        'discipline': discipline,
+                        'level': level,
+                        'prompt': prompt_template
+                    })
 
     return tasks, (col_task, col_answer)
 
